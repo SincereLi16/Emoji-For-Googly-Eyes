@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <title>Emoji Animations</title>
+    <style>
+        /* Base styles */
+        body { margin: 0; height: 100vh; background-color: black; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+        .tabs { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; background: rgba(255, 255, 255, 0.1); padding: 15px 20px; border-radius: 20px; backdrop-filter: blur(10px); z-index: 100; width: 90%; max-width: 900px; }
+        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 8px 14px; border-radius: 20px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; }
+        .tab.active, .tab:hover { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        
+        .scene { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; gap: 60px; }
+        .scene.active { display: flex; }
+        
+        /* --- 核心组件：物理屏幕与眼白分离架构 --- */
+        /* 1. 物理 TFT 屏幕 (硬件边框约束) */
+        .eye { 
+            width: 160px; height: 160px; 
+            background-color: #080808; /* 模拟息屏黑/暗灰色 */
+            border-radius: 50%; 
+            position: relative; 
+            overflow: hidden; 
+            box-shadow: 0 0 0 2px #222, inset 0 0 12px #000; /* 模拟物理边框和屏幕内阴影 */
+        }
+        
+        /* 1.5 瞬目反射 (眼睑) - 高阶拟真优化 */
+        .eyelid-top, .eyelid-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: #080808; 
+            z-index: 10; 
+        }
+        /* 上眼皮：主导闭合 (80%)，边缘带较平缓的圆弧 */
+        .eyelid-top {
+            top: 0;
+            height: 85%;
+            border-bottom-left-radius: 50% 8%;
+            border-bottom-right-radius: 50% 8%;
+            transform: translateY(-100%);
+        }
+        /* 下眼皮：辅助闭合 (20%)，边缘带极轻微的圆弧 */
+        .eyelid-bottom {
+            bottom: 0;
+            height: 25%;
+            border-top-left-radius: 50% 10%;
+            border-top-right-radius: 50% 10%;
+            transform: translateY(100%);
+        }
+
+        /* 纯随机眨眼触发类 */
+        .eye.is-blinking .eyelid-top { animation: blink-action-top 0.3s forwards; }
+        .eye.is-blinking .eyelid-bottom { animation: blink-action-bottom 0.3s forwards; }
+        .eye.is-blinking::before { animation: blink-squash 0.3s forwards !important; }
+
+        /* 左眼和右眼添加微小的神经延迟 (Asymmetric Micro-Delay) */
+        .eye:nth-child(2).is-blinking .eyelid-top, 
+        .eye:nth-child(2).is-blinking .eyelid-bottom,
+        .eye:nth-child(2).is-blinking::before {
+            animation-delay: 0.04s;
+        }
+
+        /* 眨眼逻辑：快闭，慢开，加入贝塞尔曲线实现肌肉粘滞感 */
+        @keyframes blink-action-top {
+            0% { transform: translateY(-100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); } /* 极速下砸 */
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); } /* 缓慢抬起 */
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes blink-action-bottom {
+            0% { transform: translateY(100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); }
+            100% { transform: translateY(100%); }
+        }
+        @keyframes blink-squash {
+            0% { transform: scale(1, 1); }
+            35%, 40% { transform: scale(1.01, 0.96); }
+            100% { transform: scale(1, 1); }
+        }
+
+        /* 2. 真实的眼白图层 (稍微缩小尺寸，从 4px 增加到 8px 边距) */
+        .eye::before {
+            content: ''; 
+            position: absolute; 
+            top: 8px; left: 8px; right: 8px; bottom: 8px; 
+            background-color: white; 
+            border-radius: 50%; 
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.4); 
+            z-index: 0; 
+            animation: sclera-base 3.5s infinite ease-in-out;
+        }
+        /* 默认的眼白全局情绪呼吸 (剥离了固定的眨眼挤压) */
+        @keyframes sclera-base {
+            0%, 100% { transform: scale(0.98, 0.98); }
+            50% { transform: scale(1, 1); }
+        }
+
+        /* 底层瞳孔的深渊共鸣 (Pupil Resonance) */
+        .pupil-seamless { 
+            width: 60px; height: 60px; 
+            background-color: black; 
+            border-radius: 50%; 
+            position: absolute; top: 50%; left: 50%; 
+            margin-left: -30px; margin-top: -30px; 
+            animation: seamless-pupil-anim 3.5s infinite ease-in-out; 
+            z-index: 2; 
+        }
+        @keyframes seamless-pupil-anim {
+            0%, 12% { opacity: 1; transform: scale(1); }
+            16% { opacity: 0.5; transform: scale(0.8); } /* 预判emoji爆发，瞳孔微微收缩 */
+            20% { opacity: 0; transform: scale(0.6); }   /* emoji最大时，瞳孔消失 */
+            21%, 79% { opacity: 0; transform: scale(0); }
+            80% { opacity: 0; transform: scale(0.6); }
+            88%, 100% { opacity: 1; transform: scale(1); }
+        }
+
+        /* 1. 经典初版 (LVGL 性能友好版：移除阴影与模糊滤镜) */
+        .original-emoji { 
+            width: 100px; height: 100px; 
+            position: absolute; top: 50%; left: 50%; 
+            margin-left: -50px; margin-top: -50px; 
+            opacity: 0; 
+            animation: emoji-anim-original 3.5s infinite ease-in-out; 
+            z-index: 3; /* 提升层级，确保在瞳孔之上 */
+        }
+        @keyframes emoji-anim-original {
+            0%, 12% { 
+                opacity: 0; 
+                transform: scale(0.4) rotate(0deg); 
+            }
+            16% {
+                /* 极速爆发的过程 */
+                opacity: 0.8;
+                transform: scale(0.8, 0.8) rotate(2deg); /* 补充一个中间态形变，让过渡更平滑 */
+            }
+            20% { 
+                opacity: 1; 
+                /* 挤压与拉伸：横向拉伸，纵向稍扁，带微小旋转 */
+                transform: scale(1.35, 1.25) rotate(4deg); 
+            }
+            35% { 
+                opacity: 1; 
+                /* 回缩：瘦长形变，反向微小旋转 */
+                transform: scale(0.75, 0.85) rotate(-3deg); 
+            }
+            40% { 
+                opacity: 1; 
+                /* 二次弹起 */
+                transform: scale(1.18, 1.12) rotate(2deg); 
+            }
+            45% { 
+                opacity: 1; 
+                transform: scale(0.92, 0.96) rotate(-1deg); 
+            }
+            50% { 
+                opacity: 1; 
+                transform: scale(1.06, 1.04) rotate(0deg); 
+            }
+            55%, 65% { 
+                opacity: 1; 
+                /* 稳定态 */
+                transform: scale(1, 1) rotate(0deg); 
+            }
+            80% { 
+                opacity: 1; 
+                transform: scale(1.12, 1.08) rotate(1deg); 
+            }
+            88%, 100% { 
+                opacity: 0; 
+                transform: scale(0.4) rotate(0deg); 
+            }
+        }
+
+        /* 2. 弹性螺旋 (Elastic Spin) */
+        .spin-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: spin-anim 3.5s infinite ease-in-out; z-index: 1; }
+        @keyframes spin-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4) rotate(-180deg); }
+            20% { opacity: 1; transform: scale(1.2) rotate(15deg); } 
+            40% { opacity: 1; transform: scale(0.95) rotate(-5deg); } 
+            50%, 60% { opacity: 1; transform: scale(1) rotate(0deg); } 
+            80% { opacity: 1; transform: scale(1.1) rotate(15deg); } 
+            88%, 100% { opacity: 0; transform: scale(0.4) rotate(-180deg); } 
+        }
+
+        /* 3. 残影拖尾 (Ghosting Trail - Saccade Eye Movement) */
+        .ghost-emoji { width: 80px; height: 80px; position: absolute; top: 50%; left: 50%; margin-left: -40px; margin-top: -40px; animation: ghost-anim 3.5s infinite ease-in-out; --max-op: 1; }
+        .ghost-emoji.g1 { animation-delay: 0s; z-index: 3; --max-op: 1; }
+        .ghost-emoji.g2 { animation-delay: 0.06s; z-index: 2; --max-op: 0.4; filter: blur(2px); }
+        .ghost-emoji.g3 { animation-delay: 0.12s; z-index: 1; --max-op: 0.15; filter: blur(4px); }
+        @keyframes ghost-anim {
+            0%, 12% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+            20%, 25% { opacity: var(--max-op); transform: translate(0, 0) scale(1); }
+            30%, 40% { transform: translate(-30px, -15px) scale(1); }
+            45%, 55% { transform: translate(30px, -10px) scale(1); }
+            60%, 70% { transform: translate(-15px, 20px) scale(1); }
+            75%, 80% { opacity: var(--max-op); transform: translate(0, 0) scale(1); }
+            88%, 100% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+        }
+
+        /* 5. 微震高光 (Micro-vibrations & Gloss Shimmer) */
+        .shimmer-wrapper { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; animation: shimmer-wrapper-anim 3.5s infinite ease-in-out; z-index: 1; }
+        @keyframes shimmer-wrapper-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4); }
+            20%, 80% { opacity: 1; transform: scale(1); }
+            88%, 100% { opacity: 0; transform: scale(0.4); }
+        }
+        .shimmer-emoji { width: 100%; height: 100%; animation: vibrate-anim 0.06s infinite linear; }
+        @keyframes vibrate-anim {
+            0% { transform: translate(0, 0); }
+            25% { transform: translate(1px, -0.5px); }
+            50% { transform: translate(-0.5px, 1px); }
+            75% { transform: translate(-1px, -1px); }
+            100% { transform: translate(0.5px, 0.5px); }
+        }
+        .shimmer-light { position: absolute; top: 0; left: 0; width: 100%; height: 100%; mask-image: url('Heart.png'); -webkit-mask-image: url('Heart.png'); mask-size: contain; -webkit-mask-size: contain; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat; background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.8) 50%, transparent 80%); background-size: 200% 200%; animation: light-sweep 3.5s infinite ease-in-out; mix-blend-mode: overlay; pointer-events: none; }
+        @keyframes light-sweep {
+            0%, 25% { background-position: 200% 0; }
+            45%, 100% { background-position: -100% 100%; } 
+        }
+
+        /* 5. 弹簧果冻 (Spring & Jelly Elastic) */
+        .jelly-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: jelly-anim 3.5s infinite; z-index: 1; }
+        @keyframes jelly-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4); }
+            20% { opacity: 1; transform: scale(1.4, 0.6); }
+            35% { opacity: 1; transform: scale(0.7, 1.3); }
+            40% { opacity: 1; transform: scale(1.2, 0.8); }
+            45% { opacity: 1; transform: scale(0.9, 1.1); }
+            50%, 80% { opacity: 1; transform: scale(1, 1); }
+            88%, 100% { opacity: 0; transform: scale(0.4); }
+        }
+
+        /* 6. 液体溶解与凝聚 (Liquid Dissolve & Condense) - 效果更显著，过渡更慢 */
+        .liquid-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: liquid-anim 3.5s infinite ease-in-out; z-index: 1; }
+        @keyframes liquid-anim {
+            0%, 12% { opacity: 0; filter: blur(20px); transform: scale(0.4); }
+            25% { opacity: 1; filter: blur(0px); transform: scale(1); }
+            75% { opacity: 1; filter: blur(0px); transform: scale(1); }
+            88%, 100% { opacity: 0; filter: blur(20px); transform: scale(1.5); }
+        }
+
+        /* 7. 心脏脉冲收缩 (Heartbeat Pulse) */
+        .heartbeat-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: heartbeat-anim 3.5s infinite; z-index: 1; }
+        @keyframes heartbeat-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4); }
+            20% { opacity: 1; transform: scale(1); }
+            35% { transform: scale(1); }
+            37% { transform: scale(1.25); }
+            40% { transform: scale(0.9); }
+            43% { transform: scale(1.05); }
+            46% { transform: scale(1); }
+            55% { transform: scale(1); }
+            57% { transform: scale(1.25); }
+            60% { transform: scale(0.9); }
+            63% { transform: scale(1.05); }
+            66% { transform: scale(1); }
+            80% { opacity: 1; transform: scale(1); }
+            88%, 100% { opacity: 0; transform: scale(0.4); }
+        }
+
+        /* 8. 匀速旋转 (Continuous Rotate) */
+        .rotate-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: rotate-anim 3.5s infinite linear; z-index: 1; }
+        @keyframes rotate-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+            20% { opacity: 1; transform: scale(1) rotate(180deg); }
+            80% { opacity: 1; transform: scale(1) rotate(540deg); }
+            88%, 100% { opacity: 0; transform: scale(0.4) rotate(720deg); }
+        }
+
+        /* 9. 欢快摇摆 (Happy Swing) */
+        .swing-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; transform-origin: bottom center; animation: swing-anim 3.5s infinite ease-in-out; z-index: 1; }
+        @keyframes swing-anim {
+            0%, 12% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+            20% { opacity: 1; transform: scale(1) rotate(20deg); }
+            40% { transform: scale(1) rotate(-20deg); }
+            50% { transform: scale(1) rotate(15deg); }
+            60% { transform: scale(1) rotate(-10deg); }
+            80% { opacity: 1; transform: scale(1) rotate(0deg); }
+            88%, 100% { opacity: 0; transform: scale(0.4) rotate(0deg); }
+        }
+
+        /* 10. 活力跳动 (Energetic Bounce) */
+        .bounce-emoji { width: 90px; height: 90px; position: absolute; top: 50%; left: 50%; margin-left: -45px; margin-top: -45px; opacity: 0; animation: bounce-anim 3.5s infinite; z-index: 1; }
+        @keyframes bounce-anim {
+            0%, 12% { opacity: 0; transform: translate(15px, -40px) scale(0.4) rotate(15deg); }
+            20% { opacity: 1; transform: translate(-5px, 15px) scale(1.2, 0.8) rotate(-5deg); }
+            35% { transform: translate(-15px, -20px) scale(0.9, 1.1) rotate(-15deg); }
+            42% { transform: translate(-5px, 15px) scale(1.1, 0.9) rotate(-5deg); }
+            48% { transform: translate(0px, 0px) scale(0.95, 1.05) rotate(5deg); }
+            53%, 80% { opacity: 1; transform: translate(0, 15px) scale(1) rotate(0deg); }
+            88%, 100% { opacity: 0; transform: translate(-10px, 40px) scale(0.4) rotate(-10deg); }
+        }
+
+        /* --- 针对特定动画的眼白物理随动 (Sclera Tracking) --- */
+        
+        /* 1. 经典初版：眼白跟随快速弹跳进行物理挤压/撑开 */
+        #original .eye::before { animation: original-sclera 3.5s infinite ease-in-out; }
+        @keyframes original-sclera {
+            0%, 12% { transform: scale(0.98); }
+            22% { transform: scale(1.11); } /* 滞后2% (约70ms) 到达最大，形成挤压时间差 */
+            37% { transform: scale(0.92); } /* 滞后2% 到达最小 */
+            42% { transform: scale(1.06); } /* 滞后2% 二次反弹 */
+            47% { transform: scale(0.96); }
+            52% { transform: scale(1.02); }
+            57%, 67% { transform: scale(1); } /* 恢复平稳也稍作滞后 */
+            82% { transform: scale(1.04); } /* 结束前的最后一次跳动滞后 */
+            90%, 100% { transform: scale(0.98); }
+        }
+
+        /* 3. 残影拖尾：眼白跟随高速扫视 (增强位移) */
+        #ghost .eye::before { animation: ghost-sclera 3.5s infinite ease-in-out; }
+        @keyframes ghost-sclera {
+            0%, 12% { transform: scale(0.98) translate(0, 0); }
+            20%, 25% { transform: scale(1) translate(0, 0); }
+            30%, 40% { transform: scale(1) translate(-8px, -4px); }
+            45%, 55% { transform: scale(1) translate(8px, -3px); }
+            60%, 70% { transform: scale(1) translate(-4px, 5px); }
+            75%, 80% { transform: scale(1) translate(0, 0); }
+            88%, 100% { transform: scale(0.98) translate(0, 0); }
+        }
+
+        /* 5. 弹簧果冻：眼白跟随拉伸形变 (增强形变) */
+        #jelly .eye::before { animation: jelly-sclera 3.5s infinite; }
+        @keyframes jelly-sclera {
+            0%, 12% { transform: scale(0.98); }
+            20% { transform: scale(1.1, 0.9); }
+            35% { transform: scale(0.92, 1.08); }
+            40% { transform: scale(1.06, 0.94); }
+            45% { transform: scale(0.96, 1.04); }
+            50%, 80% { transform: scale(1, 1); }
+            88%, 100% { transform: scale(0.98); }
+        }
+
+        /* 9. 欢快摇摆：眼白随重心左右微移 (增强位移) */
+        #swing .eye::before { animation: swing-sclera 3.5s infinite ease-in-out; }
+        @keyframes swing-sclera {
+            0%, 12% { transform: scale(0.98); }
+            20% { transform: scale(1) translateX(4px); }
+            40% { transform: scale(1) translateX(-4px); }
+            50% { transform: scale(1) translateX(2.5px); }
+            60% { transform: scale(1) translateX(-2px); }
+            80% { transform: scale(1) translateX(0); }
+            88%, 100% { transform: scale(0.98); }
+        }
+
+        /* 10. 活力跳动：眼白跟随下砸产生形变和位移 (增强位移与形变) */
+        #bounce .eye::before { animation: bounce-sclera 3.5s infinite; }
+        @keyframes bounce-sclera {
+            0%, 12% { transform: scale(0.98); }
+            20% { transform: scale(1) translateY(-5px); }
+            35% { transform: scale(1.08, 0.92) translateY(6px); }
+            42% { transform: scale(0.94, 1.06) translateY(-3px); }
+            48% { transform: scale(1) translateY(2px); }
+            53%, 80% { transform: scale(1) translateY(0); }
+            88%, 100% { transform: scale(0.98); }
+        }
+    </style>
+</head>
+<body>
+    <div class="tabs">
+        <button class="tab active" onclick="switchTab('original', event)">1. 经典</button>
+        <button class="tab" onclick="switchTab('spin', event)">2. 弹性螺旋</button>
+        <button class="tab" onclick="switchTab('ghost', event)">3. 残影拖尾</button>
+        <button class="tab" onclick="switchTab('shimmer', event)">4. 微震高光</button>
+        <button class="tab" onclick="switchTab('jelly', event)">5. 弹簧果冻</button>
+        <button class="tab" onclick="switchTab('liquid', event)">6. 液体溶解</button>
+        <button class="tab" onclick="switchTab('heartbeat', event)">7. 心脏脉冲</button>
+        <button class="tab" onclick="switchTab('rotate', event)">8. 匀速旋转</button>
+        <button class="tab" onclick="switchTab('swing', event)">9. 欢快摇摆</button>
+        <button class="tab" onclick="switchTab('bounce', event)">10. 活力跳动</button>
+    </div>
+
+    <!-- 1. 经典初版 -->
+    <div id="original" class="scene active">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="original-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="original-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 2. 弹性螺旋 (Elastic Spin) -->
+    <div id="spin" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="spin-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="spin-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 6. 残影拖尾 (Ghosting Trail) -->
+    <div id="ghost" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="ghost-emoji g3" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g2" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g1" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="ghost-emoji g3" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g2" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g1" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 7. 微震高光 (Micro-vibrations & Gloss Shimmer) -->
+    <div id="shimmer" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <div class="shimmer-wrapper">
+                <img class="shimmer-emoji" src="Heart.png" alt="heart">
+                <div class="shimmer-light"></div>
+            </div>
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <div class="shimmer-wrapper">
+                <img class="shimmer-emoji" src="Heart.png" alt="heart">
+                <div class="shimmer-light"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. 弹簧果冻 (Spring & Jelly Elastic) -->
+    <div id="jelly" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="jelly-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="jelly-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 10. 液体溶解与凝聚 (Liquid Dissolve & Condense) -->
+    <div id="liquid" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="liquid-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="liquid-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 11. 心脏脉冲收缩 (Heartbeat Pulse) -->
+    <div id="heartbeat" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="heartbeat-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="heartbeat-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 12. 匀速旋转 (Continuous Rotate) -->
+    <div id="rotate" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="rotate-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="rotate-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 13. 欢快摇摆 (Happy Swing) -->
+    <div id="swing" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="swing-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="swing-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <!-- 12. 活力跳动 (Energetic Bounce) -->
+    <div id="bounce" class="scene">
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="bounce-emoji" src="Heart.png" alt="heart">
+        </div>
+        <div class="eye">
+            <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+            <div class="pupil-seamless"></div>
+            <img class="bounce-emoji" src="Heart.png" alt="heart">
+        </div>
+    </div>
+
+    <script>
+        let animationStartTime = Date.now();
+
+        function switchTab(sceneId, event) {
+            document.querySelectorAll('.scene').forEach(el => {
+                el.classList.remove('active');
+                el.style.display = '';
+            });
+            document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+            
+            document.getElementById(sceneId).classList.add('active');
+            event.currentTarget.classList.add('active');
+
+            const activeScene = document.getElementById(sceneId);
+            activeScene.style.display = 'none';
+            void activeScene.offsetWidth;
+            activeScene.style.display = '';
+            
+            // 重置动画起始时间，确保同步
+            animationStartTime = Date.now();
+        }
+
+        // 眨眼逻辑：只在动画周期(3.5s)的开始 0.1s 和结束前 0.1s 判定
+        setInterval(() => {
+            const cycleDuration = 3500; // 动画周期 3.5s
+            const elapsed = (Date.now() - animationStartTime) % cycleDuration;
+            
+            // 判定区间：开始 0.1s (elapsed < 100) 或 结束前 0.1s (elapsed > 3400)
+            const isSafeZone = elapsed < 100 || elapsed > 3400;
+
+            if (isSafeZone && Math.random() < 0.3) { // 在安全区且 30% 概率触发
+                const activeScene = document.querySelector('.scene.active');
+                
+                // 如果当前是“经典(original)”场景，则取消眨眼，避免破坏缩放同步
+                if (activeScene && activeScene.id === 'original') return;
+
+                // 优化：只让当前活跃场景中的眼睛眨眼
+                activeScene.querySelectorAll('.eye').forEach(eye => {
+                    eye.classList.remove('is-blinking');
+                    void eye.offsetWidth; 
+                    eye.classList.add('is-blinking');
+                    
+                    setTimeout(() => {
+                        eye.classList.remove('is-blinking');
+                    }, 400); 
+                });
+            }
+        }, 50); // 提高检查频率（50ms），确保不会错过 100ms 的窗口
+    </script>
+</body>
+</html>
