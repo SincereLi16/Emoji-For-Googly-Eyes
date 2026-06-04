@@ -7,23 +7,23 @@
     <title>Emoji Animations</title>
     <style>
         /* Base styles */
-        body { margin: 0; height: 100vh; background-color: black; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
-        .tabs { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; background: rgba(255, 255, 255, 0.1); padding: 15px 20px; border-radius: 20px; backdrop-filter: blur(10px); z-index: 100; width: 90%; max-width: 900px; }
-        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 8px 14px; border-radius: 20px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; }
+        body { margin: 0; height: 100vh; background-color: #050505; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
+        .tabs { position: fixed; top: 0; right: 0; bottom: 0; width: 220px; display: flex; flex-direction: column; gap: 8px; background: rgba(255, 255, 255, 0.05); padding: 20px; overflow-y: auto; backdrop-filter: blur(10px); z-index: 100; border-left: 1px solid rgba(255,255,255,0.1); scrollbar-width: none; -ms-overflow-style: none; }
+        .tabs::-webkit-scrollbar { display: none; }
+        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; text-align: left; }
         .tab.active, .tab:hover { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
         
-        .scene { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; gap: 60px; }
+        .scene { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; gap: 60px; position: relative; padding-right: 260px; box-sizing: border-box; }
         .scene.active { display: flex; }
         
         /* --- 核心组件：物理屏幕与眼白分离架构 --- */
         /* 1. 物理 TFT 屏幕 (硬件边框约束) */
         .eye { 
             width: 160px; height: 160px; 
-            background-color: #080808; /* 模拟息屏黑/暗灰色 */
+            background-color: transparent; 
             border-radius: 50%; 
             position: relative; 
             overflow: hidden; 
-            box-shadow: 0 0 0 2px #222, inset 0 0 12px #000; /* 模拟物理边框和屏幕内阴影 */
         }
         
         /* 1.5 瞬目反射 (眼睑) - 高阶拟真优化 */
@@ -52,14 +52,12 @@
         }
 
         /* 纯随机眨眼触发类 */
-        .eye.is-blinking .eyelid-top { animation: blink-action-top 0.3s forwards; }
-        .eye.is-blinking .eyelid-bottom { animation: blink-action-bottom 0.3s forwards; }
-        .eye.is-blinking::before { animation: blink-squash 0.3s forwards !important; }
+        .eye.is-blinking .eyelid-top { animation: blink-action-top var(--blink-dur, 0.3s) forwards; }
+        .eye.is-blinking .eyelid-bottom { animation: blink-action-bottom var(--blink-dur, 0.3s) forwards; }
 
         /* 左眼和右眼添加微小的神经延迟 (Asymmetric Micro-Delay) */
         .eye:nth-child(2).is-blinking .eyelid-top, 
-        .eye:nth-child(2).is-blinking .eyelid-bottom,
-        .eye:nth-child(2).is-blinking::before {
+        .eye:nth-child(2).is-blinking .eyelid-bottom {
             animation-delay: 0.04s;
         }
 
@@ -289,7 +287,7 @@
             35% { transform: translate(-15px, -20px) scale(0.9, 1.1) rotate(-15deg); }
             42% { transform: translate(-5px, 15px) scale(1.1, 0.9) rotate(-5deg); }
             48% { transform: translate(0px, 0px) scale(0.95, 1.05) rotate(5deg); }
-            53%, 80% { opacity: 1; transform: translate(0, 15px) scale(1) rotate(0deg); }
+            53%, 80% { opacity: 1; transform: translate(0, 0) scale(1) rotate(0deg); } /* 修改：回归到中心点 translate(0,0) */
             88%, 100% { opacity: 0; transform: translate(-10px, 40px) scale(0.4) rotate(-10deg); }
         }
 
@@ -309,6 +307,19 @@
             90%, 100% { transform: scale(0.98); }
         }
 
+        /* 2. 弹性螺旋：眼白跟随旋转并放大至眼眶 */
+        #spin .eye::before { animation: spin-sclera 3.5s infinite ease-in-out; }
+        @keyframes spin-sclera {
+            0%, 10% { transform: scale(0.98) rotate(-180deg); } 
+            18% { transform: scale(1.12) rotate(5deg); } 
+            20% { transform: scale(1.12) rotate(15deg); } 
+            40% { transform: scale(0.95) rotate(-5deg); } 
+            50%, 58% { transform: scale(1) rotate(0deg); } /* 二次发力提前到 58% 开始，配合 Heart 的 60% */
+            78% { transform: scale(1.12) rotate(12deg); } /* 完全拉平这段动画，与 Heart 完美同步 */
+            80% { transform: scale(1.12) rotate(15deg); } 
+            88%, 100% { transform: scale(0.98) rotate(-180deg); } 
+        }
+
         /* 3. 残影拖尾：眼白跟随高速扫视 (增强位移) */
         #ghost .eye::before { animation: ghost-sclera 3.5s infinite ease-in-out; }
         @keyframes ghost-sclera {
@@ -319,6 +330,38 @@
             60%, 70% { transform: scale(1) translate(-4px, 5px); }
             75%, 80% { transform: scale(1) translate(0, 0); }
             88%, 100% { transform: scale(0.98) translate(0, 0); }
+        }
+
+        /* 4. 微震高光：眼白配合光效扫过产生渐进式放大与高频微震 (Tension & Release) */
+        #shimmer .eye::before { 
+            animation: shimmer-sclera 3.5s infinite ease-in-out;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.4), 0 0 0 rgba(255,255,255,0); /* 预置发光阴影 */
+        }
+        @keyframes shimmer-sclera {
+            0%, 12% { 
+                transform: scale(0.98); 
+                box-shadow: inset 0 0 15px rgba(0,0,0,0.4), 0 0 0 rgba(255,255,255,0);
+            }
+            
+            /* 阶段1：Heart出现，眼白轻微放大，准备迎接高光 (16% - 25%) */
+            16% { transform: scale(1.02); }
+            
+            /* 阶段2：高光扫过！眼白随着光效达到最大张力，伴随极微小的颤动 (25% - 45%) */
+            25% { transform: scale(1.06) translate(0.5px, -0.5px); box-shadow: inset 0 0 20px rgba(0,0,0,0.5), 0 0 10px rgba(255,255,255,0.3); }
+            30% { transform: scale(1.05) translate(-0.5px, 0.5px); }
+            35% { transform: scale(1.07) translate(0.5px, 0.5px); }
+            40% { transform: scale(1.04) translate(-0.5px, -0.5px); }
+            45% { transform: scale(1.06) translate(0, 0); box-shadow: inset 0 0 15px rgba(0,0,0,0.4), 0 0 0 rgba(255,255,255,0); }
+
+            /* 阶段3：高光结束，眼白保持轻微紧张状态 (45% - 80%) */
+            60% { transform: scale(1.02); }
+            80% { transform: scale(1.02); }
+            
+            /* 阶段4：Heart消失，眼白回落静止 */
+            88%, 100% { 
+                transform: scale(0.98); 
+                box-shadow: inset 0 0 15px rgba(0,0,0,0.4), 0 0 0 rgba(255,255,255,0);
+            }
         }
 
         /* 5. 弹簧果冻：眼白跟随拉伸形变 (增强形变) */
@@ -333,43 +376,87 @@
             88%, 100% { transform: scale(0.98); }
         }
 
-        /* 9. 欢快摇摆：眼白随重心左右微移 (增强位移) */
+        /* 9. 欢快摇摆：眼白随重心左右大幅度位移 (限制在眼眶内，防止边缘被裁切) */
         #swing .eye::before { animation: swing-sclera 3.5s infinite ease-in-out; }
         @keyframes swing-sclera {
-            0%, 12% { transform: scale(0.98); }
-            20% { transform: scale(1) translateX(4px); }
-            40% { transform: scale(1) translateX(-4px); }
-            50% { transform: scale(1) translateX(2.5px); }
-            60% { transform: scale(1) translateX(-2px); }
+            0%, 12% { transform: scale(0.98) translateX(0); }
+            20% { transform: scale(1.02) translateX(6px); } /* 预留安全距离：放大1.02倍后，最大位移6px刚好贴住眼眶而不被切平 */
+            40% { transform: scale(1.02) translateX(-6px); }
+            50% { transform: scale(1.01) translateX(4px); }
+            60% { transform: scale(1.01) translateX(-3px); }
             80% { transform: scale(1) translateX(0); }
+            88%, 100% { transform: scale(0.98) translateX(0); }
+        }
+
+        /* 10. 活力跳动：眼白跟随运动方向位移 (舍弃形变，保持正圆纯位移) */
+        #bounce .eye::before { animation: bounce-sclera 3.5s infinite ease-in-out; }
+        @keyframes bounce-sclera {
+            0%, 12% { transform: scale(0.98) translate(0, 0); }
+            /* 第一次下砸右下方 (对应 Heart: translate(-5px, 15px)) */
+            20% { transform: scale(1) translate(4px, 6px); }
+            /* 弹起到左上方 (对应 Heart: translate(-15px, -20px)) */
+            35% { transform: scale(1) translate(-6px, -6px); }
+            /* 第二次下砸右下方 (对应 Heart: translate(-5px, 15px)) */
+            42% { transform: scale(1) translate(2px, 4px); }
+            /* 第二次弹起微居中 (对应 Heart: translate(0px, 0px)) */
+            48% { transform: scale(1) translate(-2px, -2px); }
+            /* 落地恢复中心 */
+            53%, 80% { transform: scale(1) translate(0, 0); }
+            88%, 100% { transform: scale(0.98) translate(0, 0); }
+        }
+
+        /* 6. 液体溶解：眼白产生水滴般的剧烈缩放和边缘蠕动 (限制在眼眶内) */
+        #liquid .eye::before { animation: liquid-sclera 3.5s infinite ease-in-out; }
+        @keyframes liquid-sclera {
+            0%, 12% { transform: scale(0.98); border-radius: 50%; }
+            25% { transform: scale(1.08); border-radius: 48% 52% 52% 48% / 50% 48% 52% 50%; } /* 最大放大到 1.08，防止加上变形后切边 */
+            50% { transform: scale(0.92); border-radius: 52% 48% 48% 52% / 48% 52% 50% 50%; } 
+            75% { transform: scale(1.08); border-radius: 50%; } 
+            88%, 100% { transform: scale(0.98); border-radius: 50%; }
+        }
+
+        /* 7. 心脏脉冲：眼白跟随心脏进行同频泵血跳动 (限制在眼眶内) */
+        #heartbeat .eye::before { animation: heartbeat-sclera 3.5s infinite; }
+        @keyframes heartbeat-sclera {
+            0%, 12% { transform: scale(0.98); }
+            20% { transform: scale(1); }
+            35% { transform: scale(1); }
+            37% { transform: scale(1.08); } /* 第一次脉冲：最大限制到1.08 */
+            40% { transform: scale(0.96); }
+            43% { transform: scale(1.02); }
+            46% { transform: scale(1); }
+            55% { transform: scale(1); }
+            57% { transform: scale(1.08); } /* 第二次脉冲 */
+            60% { transform: scale(0.96); }
+            63% { transform: scale(1.02); }
+            66% { transform: scale(1); }
+            80% { transform: scale(1); }
             88%, 100% { transform: scale(0.98); }
         }
 
-        /* 10. 活力跳动：眼白跟随下砸产生形变和位移 (增强位移与形变) */
-        #bounce .eye::before { animation: bounce-sclera 3.5s infinite; }
-        @keyframes bounce-sclera {
+        /* 8. 匀速旋转：眼白产生周期性的呼吸缩放感 */
+        #rotate .eye::before { animation: rotate-sclera 3.5s infinite linear; }
+        @keyframes rotate-sclera {
             0%, 12% { transform: scale(0.98); }
-            20% { transform: scale(1) translateY(-5px); }
-            35% { transform: scale(1.08, 0.92) translateY(6px); }
-            42% { transform: scale(0.94, 1.06) translateY(-3px); }
-            48% { transform: scale(1) translateY(2px); }
-            53%, 80% { transform: scale(1) translateY(0); }
+            20% { transform: scale(1.08); }  /* 旋转启动时放大 */
+            50% { transform: scale(0.95); }  /* 旋转途中轻微收缩，增加呼吸节奏 */
+            80% { transform: scale(1.08); }  /* 旋转末期再次放大 */
             88%, 100% { transform: scale(0.98); }
         }
     </style>
 </head>
 <body>
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('original', event)">1. 经典</button>
-        <button class="tab" onclick="switchTab('spin', event)">2. 弹性螺旋</button>
-        <button class="tab" onclick="switchTab('ghost', event)">3. 残影拖尾</button>
-        <button class="tab" onclick="switchTab('shimmer', event)">4. 微震高光</button>
-        <button class="tab" onclick="switchTab('jelly', event)">5. 弹簧果冻</button>
-        <button class="tab" onclick="switchTab('liquid', event)">6. 液体溶解</button>
-        <button class="tab" onclick="switchTab('heartbeat', event)">7. 心脏脉冲</button>
-        <button class="tab" onclick="switchTab('rotate', event)">8. 匀速旋转</button>
-        <button class="tab" onclick="switchTab('swing', event)">9. 欢快摇摆</button>
-        <button class="tab" onclick="switchTab('bounce', event)">10. 活力跳动</button>
+        <button class="tab active" onclick="switchTab('original', event)">1. 经典 Original</button>
+        <button class="tab" onclick="switchTab('spin', event)">2. 螺旋 Spin</button>
+        <button class="tab" onclick="switchTab('ghost', event)">3. 拖尾 Ghost</button>
+        <button class="tab" onclick="switchTab('shimmer', event)">4. 震动 Shimmer</button>
+        <button class="tab" onclick="switchTab('jelly', event)">5. 弹簧 Jelly</button>
+        <button class="tab" onclick="switchTab('liquid', event)">6. 溶解 Liquid</button>
+        <button class="tab" onclick="switchTab('heartbeat', event)">7. 脉冲 Heartbeat</button>
+        <button class="tab" onclick="switchTab('rotate', event)">8. 旋转 Rotate</button>
+        <button class="tab" onclick="switchTab('swing', event)">9. 摇摆 Swing</button>
+        <button class="tab" onclick="switchTab('bounce', event)">10. 跳动 Bounce</button>
     </div>
 
     <!-- 1. 经典初版 -->
@@ -524,6 +611,7 @@
 
     <script>
         let animationStartTime = Date.now();
+        let lastBlinkLoop = -1;
 
         function switchTab(sceneId, event) {
             document.querySelectorAll('.scene').forEach(el => {
@@ -542,34 +630,38 @@
             
             // 重置动画起始时间，确保同步
             animationStartTime = Date.now();
+            lastBlinkLoop = -1;
         }
 
-        // 眨眼逻辑：只在动画周期(3.5s)的开始 0.1s 和结束前 0.1s 判定
-        setInterval(() => {
-            const cycleDuration = 3500; // 动画周期 3.5s
-            const elapsed = (Date.now() - animationStartTime) % cycleDuration;
-            
-            // 判定区间：开始 0.1s (elapsed < 100) 或 结束前 0.1s (elapsed > 3400)
-            const isSafeZone = elapsed < 100 || elapsed > 3400;
-
-            if (isSafeZone && Math.random() < 0.3) { // 在安全区且 30% 概率触发
-                const activeScene = document.querySelector('.scene.active');
-                
-                // 如果当前是“经典(original)”场景，则取消眨眼，避免破坏缩放同步
-                if (activeScene && activeScene.id === 'original') return;
-
-                // 优化：只让当前活跃场景中的眼睛眨眼
-                activeScene.querySelectorAll('.eye').forEach(eye => {
+        function triggerBlink(duration) {
+            const activeScene = document.querySelector('.scene.active');
+            if (!activeScene) return;
+            activeScene.querySelectorAll('.eye').forEach(eye => {
+                eye.classList.remove('is-blinking');
+                void eye.offsetWidth; 
+                eye.style.setProperty('--blink-dur', (duration/1000) + 's');
+                eye.classList.add('is-blinking');
+                setTimeout(() => {
                     eye.classList.remove('is-blinking');
-                    void eye.offsetWidth; 
-                    eye.classList.add('is-blinking');
-                    
-                    setTimeout(() => {
-                        eye.classList.remove('is-blinking');
-                    }, 400); 
-                });
+                }, duration + 50); 
+            });
+        }
+
+        function updateLogic() {
+            const cycleDuration = 3500; // 动画周期 3.5s
+            const localTime = Date.now() - animationStartTime;
+            const t = localTime % cycleDuration;
+            const currentLoopCount = Math.floor(localTime / cycleDuration);
+
+            // 统一控制眨眼，保证首尾帧绝对没有眨眼形变
+            if (currentLoopCount !== lastBlinkLoop && t > cycleDuration / 2) {
+                // triggerBlink(300); // 默认 300ms 眨眼 (已根据要求禁用)
+                lastBlinkLoop = currentLoopCount;
             }
-        }, 50); // 提高检查频率（50ms），确保不会错过 100ms 的窗口
+            requestAnimationFrame(updateLogic);
+        }
+        
+        requestAnimationFrame(updateLogic);
     </script>
 </body>
 </html>
