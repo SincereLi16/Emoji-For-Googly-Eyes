@@ -1,0 +1,1029 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Command</title>
+    <style>
+        /* Base styles from googly.html */
+        body { margin: 0; height: 100vh; background-color: #050505; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
+        .tabs { position: fixed; top: 0; right: 0; bottom: 0; width: 220px; display: flex; flex-direction: column; gap: 8px; background: rgba(255, 255, 255, 0.05); padding: 20px; overflow-y: auto; backdrop-filter: blur(10px); z-index: 100; border-left: 1px solid rgba(255,255,255,0.1); scrollbar-width: none; -ms-overflow-style: none; }
+        .tabs::-webkit-scrollbar { display: none; }
+        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; text-align: left; }
+        .tab.active, .tab:hover { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        
+        .scene { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding-right: 260px; box-sizing: border-box; }
+        
+        .eye-container { display: flex; gap: 60px; position: relative; }
+
+        /* 1. 物理 TFT 屏幕 (硬件边框约束) */
+        .eye { 
+            width: 160px; height: 160px; 
+            background-color: transparent; 
+            border-radius: 50%; 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        /* 瞬目反射 (眼睑) */
+        .eyelid-top, .eyelid-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: #080808; 
+            z-index: 10; 
+        }
+        .eyelid-top {
+            top: 0;
+            height: 85%;
+            border-bottom-left-radius: 50% 8%;
+            border-bottom-right-radius: 50% 8%;
+            transform: translateY(var(--lid-top, -100%));
+        }
+        .eyelid-bottom {
+            bottom: 0;
+            height: 25%;
+            border-top-left-radius: 50% 10%;
+            border-top-right-radius: 50% 10%;
+            transform: translateY(var(--lid-bottom, 100%));
+        }
+
+        .eye.is-blinking .eyelid-top { animation: blink-top var(--blink-dur, 0.3s) forwards; }
+        .eye.is-blinking .eyelid-bottom { animation: blink-bottom var(--blink-dur, 0.3s) forwards; }
+
+        .eye:nth-child(2).is-blinking .eyelid-top, 
+        .eye:nth-child(2).is-blinking .eyelid-bottom {
+            animation-delay: 0.04s;
+        }
+
+        @keyframes blink-top {
+            0% { transform: translateY(var(--lid-top, -100%)); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); } 
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); } 
+            100% { transform: translateY(var(--lid-top, -100%)); }
+        }
+        @keyframes blink-bottom {
+            0% { transform: translateY(var(--lid-bottom, 100%)); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); }
+            100% { transform: translateY(var(--lid-bottom, 100%)); }
+        }
+
+        /* 使用专门的裁剪容器作为真实的眼白图层，避免抗锯齿白边透出 */
+        .sclera-clip {
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            background-color: #f4f4f4;
+            border-radius: 50%;
+            overflow: hidden;
+            z-index: 1;
+            /* 修复 Webkit 渲染下的裁剪白边问题 */
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            /* 跟随眼白图层一起做视差位移，保证裁剪区域与视觉上的眼白完全重合 */
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 使用 ::after 作为内阴影遮罩层，盖在瞳孔上方，增强 3D 立体感并遮挡边缘 */
+        .eye::after {
+            content: '';
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            border-radius: 50%;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
+            z-index: 3;
+            pointer-events: none;
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 眼珠/瞳孔 基础样式 */
+        .pupil {
+            width: 70px; height: 70px;
+            background-color: transparent;
+            border-radius: 50%;
+            position: absolute; top: 50%; left: 50%;
+            margin-left: -35px; margin-top: -35px;
+            z-index: 2;
+        }
+        
+        /* 使用伪元素作为眼珠背景，利用 transform 缩放避免 Layout 重排卡顿 */
+        .pupil::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 70px; height: 70px;
+            background-color: #000;
+            border-radius: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px))) scaleX(var(--bg-scale-x, 1)) scaleY(var(--bg-scale-y, 1));
+            z-index: -1;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .pupil.no-transition::before {
+            transition: none;
+        }
+
+        /* --- 特殊形变类 (Shape Classes) --- */
+        
+        /* 2. 正常圆瞳 (预留，不带星星高光) */
+        .pupil.shape-circle {
+        }
+
+        /* 1. 星星眼 (Sphere 风格：巨大椭圆 + 内部星光) */
+        .pupil.shape-star {
+        }
+
+        /* 星星高光容器 (仅在星星眼模式下显示) */
+        .star-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-star .star-highlights {
+            display: block;
+        }
+
+        /* 泪光容器 (仅在眼泪汪汪模式下显示) */
+        .tear-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-teary .tear-highlights {
+            display: block;
+        }
+
+        /* 纯白色的四角星星 */
+        .star-shine {
+            position: absolute;
+            background-color: white;
+            /* 之前是 60% 40% (比较尖锐)，现在调整为 65% 35% (中心部分更饱满，类似方片) */
+            clip-path: polygon(50% 0%, 65% 35%, 100% 50%, 65% 65%, 50% 100%, 35% 65%, 0% 50%, 35% 35%);
+            transform-origin: center center;
+            /* 使用 CSS 变量接收 JS 传来的缩放和旋转 */
+            transform: scale(var(--star-scale, 1)) rotate(var(--star-rot, 0deg));
+        }
+
+        /* 主星 (大，左上侧) */
+        .star-main {
+            width: 45px; height: 45px;
+            top: 12%; left: 15%;
+        }
+
+        /* 副星1 (小，左下侧) */
+        .star-sub1 {
+            width: 22px; height: 22px;
+            bottom: 18%; left: 22%;
+        }
+
+        /* 副星2 (小，右上侧 -> 往左下偏移) */
+        .star-sub2 {
+            width: 18px; height: 18px;
+            top: 35%; right: 22%;
+        }
+
+        /* 眼泪汪汪的各种高光形状 */
+        .tear-shine {
+            position: absolute;
+            background-color: white;
+            border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%;
+            transform-origin: center center;
+            opacity: 1; 
+            animation: tear-morph 3s ease-in-out infinite;
+        }
+
+        /* 浮动图标 (用于蓝牙/WiFi搜索) */
+        .floating-icon {
+            display: none;
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 38px; height: 38px;
+            margin-top: -19px; margin-left: -19px;
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            z-index: 3; /* 放在眼珠之上 */
+            pointer-events: none;
+            /* 接收 JS 的位移和透明度控制 */
+            transform: translate(var(--icon-x, 0px), var(--icon-y, 0px)) scale(var(--icon-scale-x, var(--icon-scale, 1)), var(--icon-scale-y, var(--icon-scale, 1))) rotate(var(--icon-rot, 0deg));
+            opacity: var(--icon-opacity, 0);
+        }
+        
+        .eye.show-icon .floating-icon {
+            display: block;
+        }
+
+        @keyframes tear-morph {
+            0%   { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+            25%  { border-radius: 54% 46% 53% 47% / 46% 54% 48% 52%; }
+            50%  { border-radius: 46% 54% 45% 55% / 55% 45% 56% 44%; }
+            75%  { border-radius: 51% 49% 55% 45% / 49% 51% 45% 55%; }
+            100% { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+        }
+
+        /* 泪光 - 主高光 (左侧偏上的大水滴) */
+        .tear-main {
+            width: 56px; height: 56px; /* 缩小主水珠 */
+            top: 10%; left: 15%; /* 稍微往中心靠一点，平衡缩小的尺寸，并上移到10% */
+            /* 接收 JS 的缩放形变动画 */
+            transform: scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.2s;
+        }
+
+        /* 泪光 - 次高光1 (移动到右下角边缘偏下位置，向左下微调) */
+        .tear-sub1 {
+            width: 32px; height: 32px; /* 放大次水珠 */
+            bottom: 4.5%; right: 36%; /* 向上移一点点 */
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-y, 1)) scaleY(var(--tear-scale-x, 1));
+            animation-duration: 2.7s;
+        }
+
+        /* 泪光 - 次高光2 (移动到右下角偏中位置，与次高光1错开) */
+        .tear-sub2 {
+            width: 28px; height: 28px; /* 进一步放大右侧水珠 */
+            bottom: 34%; right: 6.5%; /* 往左略微收一点点 */
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.5s;
+        }
+
+        /* 模式说明浮层 */
+        .desc-overlay {
+            position: fixed; top: 40px; left: calc(50% - 130px); transform: translateX(-50%);
+            text-align: center; max-width: 800px; width: 90%;
+            background: rgba(0,0,0,0.4); padding: 20px 30px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: none; z-index: 50;
+        }
+        .desc-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; color: #fff; letter-spacing: 1px; }
+        .desc-text { font-size: 15px; color: #ddd; line-height: 1.6; }
+        .desc-emotion { margin-top: 10px; font-size: 14px; color: #aaa; font-style: italic; }
+    </style>
+</head>
+<body>
+    <div class="desc-overlay">
+        <div class="desc-title" id="mode-title">1. 开机 (Power On)</div>
+        <div class="desc-text" id="mode-desc">从闭眼休眠状态瞬间睁开，瞳孔缩放，左右自检扫视。</div>
+        <div class="desc-emotion" id="mode-emotion">情绪外显：清醒、准备就绪</div>
+    </div>
+
+    <div class="scene">
+        <div class="eye-container" id="head-container">
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="floating-icon icon-l" style="z-index: 20;"></div>
+                    <div class="pupil shape-circle" id="pupil-l">
+                        <div class="star-highlights">
+                            <div class="star-shine star-main"></div>
+                            <div class="star-shine star-sub1"></div>
+                            <div class="star-shine star-sub2"></div>
+                        </div>
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="floating-icon icon-r" style="z-index: 20;"></div>
+                    <div class="pupil shape-circle" id="pupil-r">
+                        <div class="star-highlights">
+                            <div class="star-shine star-main"></div>
+                            <div class="star-shine star-sub1"></div>
+                            <div class="star-shine star-sub2"></div>
+                        </div>
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class="tab active" onclick="setMode(401, event)">1. 开机 (Power On)</button>
+        <button class="tab" onclick="setMode(402, event)">2. 关机 (Power Off)</button>
+        <button class="tab" onclick="setMode(403, event)">3. 暂停 (Pause)</button>
+        <button class="tab" onclick="setMode(404, event)">4. 播放 (Play)</button>
+        <button class="tab" style="margin-top:10px; border-color: #3b82f6;" onclick="setMode(405, event)">5. 蓝牙搜索 (BT Search)</button>
+        <button class="tab" style="border-color: #8b5cf6;" onclick="setMode(406, event)">6. 蓝牙成功 (BT Success)</button>
+        <button class="tab" style="border-color: #f43f5e;" onclick="setMode(407, event)">7. 蓝牙断开 (BT Disconnect)</button>
+        <button class="tab" style="margin-top:10px; border-color: #10b981;" onclick="setMode(408, event)">8. WiFi搜索 (WiFi Search)</button>
+        <button class="tab" style="border-color: #059669;" onclick="setMode(409, event)">9. WiFi成功 (WiFi Success)</button>
+        <button class="tab" style="border-color: #e11d48;" onclick="setMode(410, event)">10. WiFi断开 (WiFi Disconnect)</button>
+        <button class="tab" style="margin-top:10px; border-color: #f59e0b;" onclick="setMode(411, event)">11. 音量增加 (Vol Up)</button>
+        <button class="tab" style="border-color: #f59e0b;" onclick="setMode(412, event)">12. 音量减少 (Vol Down)</button>
+    </div>
+
+    <script>
+        const modes = {
+            401: { t: "1. 开机 (Power On)", d: "从闭眼休眠状态瞬间睁开，瞳孔缩放，左右自检扫视。", e: "情绪外显：清醒、准备就绪", shape: "shape-circle" },
+            402: { t: "2. 关机 (Power Off)", d: "眼皮缓缓合上，瞳孔失去焦点下沉，进入休眠。", e: "情绪外显：疲惫、休眠", shape: "shape-circle" },
+            403: { t: "3. 暂停 (Pause)", d: "从播放状态突然急刹车，眼球迅速居中，然后开始胡乱高频抖动。", e: "情绪外显：急刹车、卡顿、懵逼", shape: "shape-circle" },
+            404: { t: "4. 播放 (Play)", d: "眼神清亮，随着音乐节拍有节奏地上下律动。", e: "情绪外显：专注、沉浸、律动", shape: "shape-circle" },
+            405: { t: "5. 蓝牙搜索 (BT Search)", d: "蓝牙图标在两眼之间穿梭游走，瞳孔像雷达一样紧紧跟随目标。", e: "情绪外显：专注、追踪、寻找", shape: "shape-circle" },
+            406: { t: "6. 蓝牙成功 (BT Success)", d: "蓝牙连接成功，脉冲确认后爆发成打勾图标。", e: "情绪外显：锁定、共振、确认", shape: "shape-circle" },
+            407: { t: "7. 蓝牙断开 (BT Disconnect)", d: "蓝牙连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", e: "情绪外显：震惊、委屈、失落", shape: "shape-circle" },
+            408: { t: "8. WiFi搜索 (WiFi Search)", d: "WiFi图标在两眼之间穿梭游走，瞳孔紧紧跟随目标。", e: "情绪外显：专注、追踪、寻找", shape: "shape-circle" },
+            409: { t: "9. WiFi成功 (WiFi Success)", d: "WiFi连接成功，脉冲确认后爆发成打勾图标。", e: "情绪外显：锁定、共振、确认", shape: "shape-circle" },
+            410: { t: "10. WiFi断开 (WiFi Disconnect)", d: "WiFi连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", e: "情绪外显：震惊、委屈、失落", shape: "shape-circle" },
+            411: { t: "11. 音量增加 (Vol Up)", d: "眼珠瞥向左边，然后沿着眼白边缘向上运动，示意音量升高。", e: "情绪外显：调高、上升", shape: "shape-circle" },
+            412: { t: "12. 音量减少 (Vol Down)", d: "眼珠瞥向左边，然后沿着眼白边缘向下运动，示意音量降低。", e: "情绪外显：调低、下降", shape: "shape-circle" }
+        };
+
+        let currentMode = 401;
+        let time = 0;
+        
+        let pL = { x: 0, y: 0, tx: 0, ty: 0, rot: 0, scale: 1 };
+        let pR = { x: 0, y: 0, tx: 0, ty: 0, rot: 0, scale: 1 };
+        let head = { x: 0, y: 0, tx: 0, ty: 0 };
+        let lastSaccadeTime = 0;
+        let modeStartTime = 0;
+        let lastBlinkLoop = -1;
+
+        const titleEl = document.getElementById('mode-title');
+        const descEl = document.getElementById('mode-desc');
+        const emotionEl = document.getElementById('mode-emotion');
+        const pupilL = document.getElementById('pupil-l');
+        const pupilR = document.getElementById('pupil-r');
+        const headContainer = document.getElementById('head-container');
+        
+        const eyeL = pupilL.closest('.eye');
+        const eyeR = pupilR.closest('.eye');
+
+        // 缓存 DOM 节点，避免在 requestAnimationFrame 中频繁查询导致卡顿
+        const hlL = pupilL.querySelector('.star-highlights');
+        const hlR = pupilR.querySelector('.star-highlights');
+        const lMain = pupilL.querySelector('.star-main');
+        const lSub1 = pupilL.querySelector('.star-sub1');
+        const lSub2 = pupilL.querySelector('.star-sub2');
+        const rMain = pupilR.querySelector('.star-main');
+        const rSub1 = pupilR.querySelector('.star-sub1');
+        const rSub2 = pupilR.querySelector('.star-sub2');
+
+        const tearHlL = pupilL.querySelector('.tear-highlights');
+        const tearHlR = pupilR.querySelector('.tear-highlights');
+        const lTearMain = pupilL.querySelector('.tear-main');
+        const lTearSub1 = pupilL.querySelector('.tear-sub1');
+        const lTearSub2 = pupilL.querySelector('.tear-sub2');
+        const rTearMain = pupilR.querySelector('.tear-main');
+        const rTearSub1 = pupilR.querySelector('.tear-sub1');
+        const rTearSub2 = pupilR.querySelector('.tear-sub2');
+
+        const iconL = document.querySelector('.icon-l');
+        const iconR = document.querySelector('.icon-r');
+
+        function setMode(m, e) {
+            currentMode = m;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if(e) e.currentTarget.classList.add('active');
+            
+            titleEl.innerText = modes[m].t;
+            descEl.innerText = modes[m].d;
+            emotionEl.innerText = modes[m].e;
+            
+            // 切换形变 Class
+            pupilL.className = 'pupil ' + modes[m].shape;
+            pupilR.className = 'pupil ' + modes[m].shape;
+
+            // 恢复默认瞳孔样式 (清理遗留属性)
+            pupilL.style.setProperty('--bg-scale-x', 1);
+            pupilL.style.setProperty('--bg-scale-y', 1);
+            pupilL.style.setProperty('--bg-offset-x', '0px');
+            pupilL.style.setProperty('--bg-offset-y', '0px');
+            pupilR.style.setProperty('--bg-scale-x', 1);
+            pupilR.style.setProperty('--bg-scale-y', 1);
+            pupilR.style.setProperty('--bg-offset-x', '0px');
+            pupilR.style.setProperty('--bg-offset-y', '0px');
+            
+            // 切换图标显示容器
+            const eyes = document.querySelectorAll('.eye');
+            if (m >= 405 && m <= 410) {
+                eyes.forEach(eye => eye.classList.add('show-icon'));
+                // 恢复默认图标变换
+                iconL.style.setProperty('--icon-scale-x', 1);
+                iconL.style.setProperty('--icon-scale-y', 1);
+                iconL.style.setProperty('--icon-rot', '0deg');
+                iconR.style.setProperty('--icon-scale-x', 1);
+                iconR.style.setProperty('--icon-scale-y', 1);
+                iconR.style.setProperty('--icon-rot', '0deg');
+            } else {
+                eyes.forEach(eye => eye.classList.remove('show-icon'));
+            }
+            
+            // 设置图标背景
+            if (m === 405) {
+                iconL.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+                iconR.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+            } else if (m === 408) {
+                iconL.style.backgroundImage = 'url("assets/WIFI-F.svg")'; 
+                iconR.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+            } else if (m === 406) {
+                iconL.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+                iconR.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+            } else if (m === 409) {
+                iconL.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+                iconR.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+            } else if (m === 407) {
+                iconL.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+                iconR.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+            } else if (m === 410) {
+                iconL.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+                iconR.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+            }
+
+            // 如果是星星眼或眼泪汪汪，禁用 CSS 过渡，完全由 JS 接管动画
+            if (m === 1 || m === 2) {
+                pupilL.classList.add('no-transition');
+                pupilR.classList.add('no-transition');
+            } else {
+                pupilL.classList.remove('no-transition');
+                pupilR.classList.remove('no-transition');
+                // 恢复默认大小
+                pupilL.style.setProperty('--bg-scale-x', 1);
+                pupilL.style.setProperty('--bg-scale-y', 1);
+                pupilL.style.setProperty('--bg-offset-x', '0px');
+                pupilL.style.setProperty('--bg-offset-y', '0px');
+                pupilR.style.setProperty('--bg-scale-x', 1);
+                pupilR.style.setProperty('--bg-scale-y', 1);
+                pupilR.style.setProperty('--bg-offset-x', '0px');
+                pupilR.style.setProperty('--bg-offset-y', '0px');
+            }
+
+            pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+            pL.rot = 0; pR.rot = 0;
+            head.tx = 0; head.ty = 0;
+            lastSaccadeTime = time;
+            modeStartTime = time;
+            lastBlinkLoop = -1;
+        }
+
+        function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+        function getNoise(amp) { return (Math.random() + Math.random() + Math.random() - 1.5) * amp; }
+
+        function updateLogic(dt) {
+            time += dt;
+
+            let speedL = 0.2, speedR = 0.2; 
+            let noiseAmp = 0;
+            let scaleL = 1, scaleR = 1;
+            let targetRotL = 0, targetRotR = 0;
+
+            let localTime = time - modeStartTime;
+            let loopDur = (currentMode === 1 || currentMode === 2) ? 6000 : 4000; // 星星眼和眼泪汪汪延长动画周期到 6 秒
+            let t = localTime % loopDur;
+            let currentLoopCount = Math.floor(localTime / loopDur);
+            
+            // 随机眨眼逻辑 (屏蔽某些特殊表情的眨眼)
+            if (currentLoopCount !== lastBlinkLoop && t > loopDur / 2) {
+                if (Math.random() < 0.3 && ![402, 403, 407, 410, 411, 412].includes(currentMode)) {
+                    triggerBlink(300);
+                }
+                lastBlinkLoop = currentLoopCount;
+            }
+
+            let currentLidTop = -100;
+            let currentLidBottom = 100;
+
+            switch(currentMode) {
+                case 401: // 开机 (Power On)
+                    let t3 = localTime % 6000;
+                    if (t3 < 600) {
+                        currentLidTop = 0; currentLidBottom = 0;
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 0.5;
+                    } else if (t3 < 1200) {
+                        let p = (t3 - 600) / 600;
+                        p = Math.sin(p * Math.PI / 2);
+                        currentLidTop = -40 * p;
+                        currentLidBottom = 40 * p;
+                        scaleL = scaleR = 0.5 + 0.2 * p;
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                    } else if (t3 < 1800) {
+                        let p = (t3 - 1200) / 600;
+                        p = Math.sin(p * Math.PI / 2);
+                        currentLidTop = -40 + 30 * p;
+                        currentLidBottom = 40 - 30 * p;
+                        scaleL = scaleR = 0.7 - 0.1 * p;
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                    } else if (t3 < 2100) {
+                        let p = (t3 - 1800) / 300;
+                        p = Math.sin(p * Math.PI / 2);
+                        currentLidTop = -10 - 90 * p;
+                        currentLidBottom = 10 + 90 * p;
+                        scaleL = scaleR = 0.6 + 0.4 * p;
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                    } else if (t3 < 2500) {
+                        currentLidTop = -100; currentLidBottom = 100;
+                        scaleL = scaleR = 1;
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                    } else if (t3 < 3100) {
+                        currentLidTop = -100; currentLidBottom = 100;
+                        pL.tx = -35; pR.tx = -35;
+                    } else if (t3 < 3700) {
+                        currentLidTop = -100; currentLidBottom = 100;
+                        pL.tx = 35; pR.tx = 35;
+                    } else {
+                        currentLidTop = -100; currentLidBottom = 100;
+                        pL.tx = 0; pR.tx = 0;
+                        scaleL = scaleR = 1;
+                    }
+                    speedL = speedR = 0.25; 
+                    noiseAmp = 0;
+                    break;
+
+                case 402: // 关机 (Power Off)
+                    let t4 = localTime % 4000; 
+                    if (t4 < 1500) {
+                        let p = t4 / 1500;
+                        p = p * p * (3 - 2 * p);
+                        currentLidTop = -100 * (1 - p);
+                        currentLidBottom = 100 * (1 - p);
+                        pL.ty = 20 * p;
+                        pR.ty = 20 * p;
+                    } else if (t4 < 3500) {
+                        currentLidTop = 0; currentLidBottom = 0;
+                        pL.ty = 20; pR.ty = 20;
+                    } else {
+                        let p = (t4 - 3500) / 500;
+                        currentLidTop = -100 * p;
+                        currentLidBottom = 100 * p;
+                        pL.ty = 20 * (1 - p);
+                        pR.ty = 20 * (1 - p);
+                    }
+                    pL.tx = 0; pR.tx = 0;
+                    scaleL = scaleR = 1;
+                    speedL = speedR = 0.1;
+                    noiseAmp = 0;
+                    break;
+
+                case 403: // 暂停 (Pause)
+                    let t5 = localTime % 2000;
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    pL.tx = 0; pR.tx = 0;
+                    pL.ty = 0; pR.ty = 0;
+                    
+                    if (t5 < 400) {
+                        speedL = speedR = 0.8;
+                        scaleL = scaleR = 1;
+                        noiseAmp = 0;
+                    } else if (t5 < 1400) {
+                        speedL = speedR = 0.9; 
+                        scaleL = scaleR = 0.92; 
+                        let decay = 1 - ((t5 - 400) / 1000); 
+                        noiseAmp = 20 * decay; 
+                    } else {
+                        speedL = speedR = 0.8;
+                        scaleL = scaleR = 1;
+                        noiseAmp = 0;
+                    }
+                    break;
+
+                case 404: // 播放 (Play)
+                    let dynamicBeatPhase = (localTime / 800) + Math.sin(localTime / 1400) * 0.4; 
+                    let cyclePhase = (dynamicBeatPhase / 3.5) % 1;
+                    let currentXAmp = 20 + Math.sin(localTime / 1700) * 10;
+                    
+                    if (cyclePhase < 3.0 / 3.5) {
+                        let beat = (cyclePhase * 3.5) % 1;
+                        let bounce = Math.sin(beat * Math.PI) * 25; 
+                        let xPhase = cyclePhase * (3.5 / 3.0); 
+                        pL.tx = Math.sin(xPhase * Math.PI * 2) * currentXAmp; 
+                        pR.tx = Math.sin(xPhase * Math.PI * 2) * currentXAmp;
+                        pL.ty = -bounce;
+                        pR.ty = -bounce;
+                        scaleL = scaleR = 1 + Math.sin(beat * Math.PI) * 0.12;
+                    } else {
+                        let resetProgress = (cyclePhase * 3.5 - 3.0) / 0.5; 
+                        let bounce = Math.sin(resetProgress * Math.PI) * 8; 
+                        pL.tx = 0; pR.tx = 0; 
+                        pL.ty = -bounce;
+                        pR.ty = -bounce;
+                        scaleL = scaleR = 1 + Math.sin(resetProgress * Math.PI) * 0.04; 
+                    }
+                    
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    speedL = speedR = 0.4;
+                    noiseAmp = 0;
+                    break;
+
+                case 405: // 蓝牙搜索 (BT Search)
+                case 408: // WiFi搜索 (WiFi Search)
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    scaleL = scaleR = 1;
+                    
+                    let globalIconX = Math.sin(time / 1800) * 150; 
+                    let globalIconY = Math.cos(time / 1200) * 25 + Math.sin(time / 1900) * 15;
+                    
+                    let localIconX_L = globalIconX - (-110); 
+                    let localIconX_R = globalIconX - 110;
+
+                    let iconScaleX_89 = 1;
+                    let iconScaleY_89 = 1;
+                    let iconRot_89 = 0;
+                    
+                    if (currentMode === 405 || currentMode === 408) {
+                        let baseScale = 1.35; 
+                        iconScaleX_89 = baseScale;
+                        iconScaleY_89 = baseScale;
+                        
+                        let velocityDir = Math.cos(time / 1800); 
+                        let tiltAngle = velocityDir * 15; 
+                        let wobble = Math.sin(time / 150) * 5; 
+                        iconRot_89 = tiltAngle + wobble;
+                    }
+
+                    iconL.style.setProperty('--icon-x', localIconX_L + 'px');
+                    iconL.style.setProperty('--icon-y', globalIconY + 'px');
+                    iconL.style.setProperty('--icon-scale-x', iconScaleX_89);
+                    iconL.style.setProperty('--icon-scale-y', iconScaleY_89);
+                    iconL.style.setProperty('--icon-rot', iconRot_89 + 'deg'); 
+
+                    iconR.style.setProperty('--icon-x', localIconX_R + 'px');
+                    iconR.style.setProperty('--icon-y', globalIconY + 'px');
+                    iconR.style.setProperty('--icon-scale-x', iconScaleX_89);
+                    iconR.style.setProperty('--icon-scale-y', iconScaleY_89);
+                    iconR.style.setProperty('--icon-rot', iconRot_89 + 'deg'); 
+
+                    let delayedTime = time - 400;
+                    let delayedIconX = Math.sin(delayedTime / 1800) * 150;
+                    let delayedIconY = Math.cos(delayedTime / 1200) * 25 + Math.sin(delayedTime / 1900) * 15;
+
+                    let targetL_X = delayedIconX - (-110); 
+                    let targetL_Y = delayedIconY;
+                    let targetR_X = delayedIconX - 110;
+                    let targetR_Y = delayedIconY;
+
+                    let trackL_X = Math.max(-26, Math.min(26, targetL_X * 0.45));
+                    let trackL_Y = targetL_Y * 0.45;
+                    let trackR_X = Math.max(-26, Math.min(26, targetR_X * 0.45));
+                    let trackR_Y = targetR_Y * 0.45;
+
+                    let tL = Math.max(0, Math.min(1, (targetL_X - 50) / 100));
+                    let peekFactorL = tL * tL * (3 - 2 * tL); 
+                    
+                    let peekL_X = trackL_X + Math.sin(time / 150) * 6; 
+                    let peekL_Y = trackL_Y + Math.cos(time / 180) * 4;
+                    
+                    pL.tx = trackL_X * (1 - peekFactorL) + peekL_X * peekFactorL;
+                    pL.ty = trackL_Y * (1 - peekFactorL) + peekL_Y * peekFactorL;
+
+                    let tR = Math.max(0, Math.min(1, (-targetR_X - 50) / 100));
+                    let peekFactorR = tR * tR * (3 - 2 * tR); 
+                    
+                    let peekR_X = trackR_X + Math.sin(time / 160) * 6; 
+                    let peekR_Y = trackR_Y + Math.cos(time / 170) * 4;
+                    
+                    pR.tx = trackR_X * (1 - peekFactorR) + peekR_X * peekFactorR;
+                    pR.ty = trackR_Y * (1 - peekFactorR) + peekR_Y * peekFactorR;
+                    
+                    speedL = speedR = 0.08; 
+                    noiseAmp = 0;
+
+                    iconL.style.setProperty('--icon-opacity', 1);
+                    iconR.style.setProperty('--icon-opacity', 1);
+
+                    break;
+
+                case 407: // 蓝牙断开 (BT Disconnect)
+                case 410: // WiFi断开 (WiFi Disconnect)
+                    let t12 = localTime % 4000;
+                    
+                    let iconY = 0, iconX = 0, iconRot = 0, iconOp = 1;
+                    let baseScale12 = 1.3;
+                    let iconScale12 = baseScale12;
+                    
+                    if (t12 < 800) {
+                        let p = t12 / 800;
+                        let easeOut = 1 - Math.pow(1 - p, 3); 
+                        
+                        scaleL = scaleR = 1; 
+                        currentLidTop = -100;
+                        currentLidBottom = 100;
+                        pL.ty = 0; pR.ty = 0; 
+                        pL.tx = 0; pR.tx = 0;
+                        
+                        iconX = 0;
+                        iconY = 0;
+                        iconOp = easeOut;
+                        iconScale12 = baseScale12 * (0.5 + 0.5 * easeOut); 
+                        
+                    } else if (t12 < 2000) {
+                        let p = (t12 - 800) / 1200;
+                        let easeIn = p * p; 
+                        
+                        iconY = easeIn * 140; 
+                        iconX = Math.sin(p * Math.PI * 4) * 30 * (1 - p); 
+                        iconRot = Math.sin(p * Math.PI * 3) * 60; 
+                        iconOp = 1 - Math.pow(p, 3); 
+                        iconScale12 = baseScale12 * (1 - p * 0.4); 
+                        
+                        currentLidTop = -100;
+                        currentLidBottom = 100;
+                        
+                        scaleL = scaleR = 1; 
+                        pL.tx = iconX * 0.4; pR.tx = iconX * 0.4;
+                        pL.ty = iconY * 0.35; pR.ty = iconY * 0.35; 
+                        
+                    } else if (t12 < 3000) {
+                        iconOp = 0;
+                        
+                        let pDroop = Math.min(1, (t12 - 2000) / 300);
+                        let easeDroop = pDroop * pDroop * (3 - 2 * pDroop);
+                        currentLidTop = -100 + 75 * easeDroop; 
+                        currentLidBottom = 100 - 75 * easeDroop; 
+                        
+                        scaleL = scaleR = 1;
+                        
+                        let swayTime = t12 - 2000;
+                        pL.ty = 24; pR.ty = 24; 
+                        pL.tx = Math.sin(swayTime / 800) * 16;
+                        pR.tx = Math.sin(swayTime / 800) * 16;
+                        
+                    } else if (t12 < 3400) {
+                        iconOp = 0;
+                        let pReset = (t12 - 3000) / 400; 
+                        let easeReset = pReset * pReset * (3 - 2 * pReset);
+                        
+                        currentLidTop = -25 - 75 * easeReset;   
+                        currentLidBottom = 25 + 75 * easeReset; 
+                        
+                        pL.ty = 24 * (1 - easeReset); 
+                        pR.ty = 24 * (1 - easeReset);
+                        
+                        let currentX = Math.sin((3000 - 2000) / 800) * 16;
+                        pL.tx = currentX * (1 - easeReset); 
+                        pR.tx = currentX * (1 - easeReset);
+                        
+                        scaleL = scaleR = 1;
+                    } else {
+                        iconOp = 0;
+                        currentLidTop = -100;
+                        currentLidBottom = 100;
+                        pL.tx = 0; pR.tx = 0;
+                        pL.ty = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                    }
+
+                    iconL.style.setProperty('--icon-x', iconX + 'px');
+                    iconL.style.setProperty('--icon-y', iconY + 'px');
+                    iconL.style.setProperty('--icon-scale-x', iconScale12);
+                    iconL.style.setProperty('--icon-scale-y', iconScale12);
+                    iconL.style.setProperty('--icon-rot', iconRot + 'deg');
+                    iconL.style.setProperty('--icon-opacity', iconOp);
+
+                    iconR.style.setProperty('--icon-x', iconX + 'px');
+                    iconR.style.setProperty('--icon-y', iconY + 'px');
+                    iconR.style.setProperty('--icon-scale-x', iconScale12);
+                    iconR.style.setProperty('--icon-scale-y', iconScale12);
+                    iconR.style.setProperty('--icon-rot', iconRot + 'deg');
+                    iconR.style.setProperty('--icon-opacity', iconOp);
+
+                    speedL = speedR = 0.15; 
+                    noiseAmp = 0;
+                    break;
+
+                case 406: // 蓝牙成功 (BT Success)
+                case 409: // WiFi成功 (WiFi Success)
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    
+                    targetRotL = 0; targetRotR = 0;
+                    pL.tx = 0; pL.ty = 0;
+                    pR.tx = 0; pR.ty = 0;
+
+                    let t10 = localTime % 6160; 
+                    let p10 = 0;
+                    let eyeScale10 = 1;
+                    let iconOpacity10 = 0;
+                    let iconScaleX10 = 1;
+                    let iconScaleY10 = 1;
+                    let iconRot10 = 0;
+                    let pupilScale10 = 0; 
+
+                    if (t10 < 3080) {
+                        if (currentMode === 406) {
+                            iconL.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+                            iconR.style.backgroundImage = 'url("assets/蓝牙-F.svg")';
+                        } else {
+                            iconL.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+                            iconR.style.backgroundImage = 'url("assets/WIFI-F.svg")';
+                        }
+
+                        p10 = t10 / 3500; 
+
+                        if (p10 < 0.12) { iconOpacity10 = 0; iconScaleX10 = 0.4; iconScaleY10 = 0.4; pupilScale10 = 1; }
+                        else if (p10 < 0.20) { let p2=(p10-0.12)/0.08; iconOpacity10 = p2; iconScaleX10 = iconScaleY10 = lerp(0.4, 1, p2); pupilScale10 = lerp(1, 0, p2); }
+                        else if (p10 < 0.35) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = 1; pupilScale10 = 0; }
+                        else if (p10 < 0.37) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1, 1.25, (p10-0.35)/0.02); pupilScale10 = 0; }
+                        else if (p10 < 0.40) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1.25, 0.9, (p10-0.37)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.43) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(0.9, 1.05, (p10-0.40)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.46) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1.05, 1, (p10-0.43)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.55) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = 1; pupilScale10 = 0; }
+                        else if (p10 < 0.57) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1, 1.25, (p10-0.55)/0.02); pupilScale10 = 0; }
+                        else if (p10 < 0.60) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1.25, 0.9, (p10-0.57)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.63) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(0.9, 1.05, (p10-0.60)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.66) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = lerp(1.05, 1, (p10-0.63)/0.03); pupilScale10 = 0; }
+                        else if (p10 < 0.80) { iconOpacity10 = 1; iconScaleX10 = iconScaleY10 = 1; pupilScale10 = 0; }
+                        else if (p10 <= 0.88) { let p2=(p10-0.80)/0.08; iconOpacity10 = 1-p2; iconScaleX10 = iconScaleY10 = lerp(1, 0.4, p2); pupilScale10 = 0; }
+
+                        if (p10 < 0.12) { eyeScale10 = 0.98; }
+                        else if (p10 < 0.20) { eyeScale10 = lerp(0.98, 1, (p10-0.12)/0.08); }
+                        else if (p10 < 0.35) { eyeScale10 = 1; }
+                        else if (p10 < 0.37) { eyeScale10 = lerp(1, 1.08, (p10-0.35)/0.02); }
+                        else if (p10 < 0.40) { eyeScale10 = lerp(1.08, 0.96, (p10-0.37)/0.03); }
+                        else if (p10 < 0.43) { eyeScale10 = lerp(0.96, 1.02, (p10-0.40)/0.03); }
+                        else if (p10 < 0.46) { eyeScale10 = lerp(1.02, 1, (p10-0.43)/0.03); }
+                        else if (p10 < 0.55) { eyeScale10 = 1; }
+                        else if (p10 < 0.57) { eyeScale10 = lerp(1, 1.08, (p10-0.55)/0.02); }
+                        else if (p10 < 0.60) { eyeScale10 = lerp(1.08, 0.96, (p10-0.57)/0.03); }
+                        else if (p10 < 0.63) { eyeScale10 = lerp(0.96, 1.02, (p10-0.60)/0.03); }
+                        else if (p10 < 0.66) { eyeScale10 = lerp(1.02, 1, (p10-0.63)/0.03); }
+                        else if (p10 < 0.80) { eyeScale10 = 1; }
+                        else if (p10 <= 0.88) { eyeScale10 = lerp(1, 0.98, (p10-0.80)/0.08); }
+
+                    } else {
+                        iconL.style.backgroundImage = 'url("assets/Yes.png")';
+                        iconR.style.backgroundImage = 'url("assets/Yes.png")';
+
+                        p10 = (t10 - 3080 + 420) / 3500; 
+
+                        if (p10 < 0.16) { let p2=(p10-0.12)/0.04; iconOpacity10 = lerp(0, 0.8, p2); iconScaleX10 = lerp(0.4, 0.8, p2); iconScaleY10 = lerp(0.4, 0.8, p2); iconRot10 = lerp(0, 2, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.20) { let p2=(p10-0.16)/0.04; iconOpacity10 = lerp(0.8, 1, p2); iconScaleX10 = lerp(0.8, 1.35, p2); iconScaleY10 = lerp(0.8, 1.25, p2); iconRot10 = lerp(2, 4, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.35) { let p2=(p10-0.20)/0.15; iconOpacity10 = 1; iconScaleX10 = lerp(1.35, 0.75, p2); iconScaleY10 = lerp(1.25, 0.85, p2); iconRot10 = lerp(4, -3, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.40) { let p2=(p10-0.35)/0.05; iconOpacity10 = 1; iconScaleX10 = lerp(0.75, 1.18, p2); iconScaleY10 = lerp(0.85, 1.12, p2); iconRot10 = lerp(-3, 2, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.45) { let p2=(p10-0.40)/0.05; iconOpacity10 = 1; iconScaleX10 = lerp(1.18, 0.92, p2); iconScaleY10 = lerp(1.12, 0.96, p2); iconRot10 = lerp(2, -1, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.50) { let p2=(p10-0.45)/0.05; iconOpacity10 = 1; iconScaleX10 = lerp(0.92, 1.06, p2); iconScaleY10 = lerp(0.96, 1.04, p2); iconRot10 = lerp(-1, 0, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.55) { let p2=(p10-0.50)/0.05; iconOpacity10 = 1; iconScaleX10 = lerp(1.06, 1, p2); iconScaleY10 = lerp(1.04, 1, p2); iconRot10 = 0; pupilScale10 = 0; }
+                        else if (p10 < 0.65) { iconOpacity10 = 1; iconScaleX10 = 1; iconScaleY10 = 1; iconRot10 = 0; pupilScale10 = 0; }
+                        else if (p10 < 0.80) { let p2=(p10-0.65)/0.15; iconOpacity10 = 1; iconScaleX10 = lerp(1, 1.12, p2); iconScaleY10 = lerp(1, 1.08, p2); iconRot10 = lerp(0, 1, p2); pupilScale10 = 0; }
+                        else if (p10 < 0.88) { let p2=(p10-0.80)/0.08; iconOpacity10 = lerp(1, 0, p2); iconScaleX10 = lerp(1.12, 0.4, p2); iconScaleY10 = lerp(1.08, 0.4, p2); iconRot10 = lerp(1, 0, p2); pupilScale10 = lerp(0, 1, p2); }
+                        else { iconOpacity10 = 0; iconScaleX10 = 0.4; iconScaleY10 = 0.4; iconRot10 = 0; pupilScale10 = 1; }
+
+                        if (p10 < 0.16) { eyeScale10 = 0.98; } 
+                        else if (p10 < 0.22) { eyeScale10 = lerp(0.98, 1.11, (p10-0.12)/0.10); }
+                        else if (p10 < 0.37) { eyeScale10 = lerp(1.11, 0.92, (p10-0.22)/0.15); }
+                        else if (p10 < 0.42) { eyeScale10 = lerp(0.92, 1.06, (p10-0.37)/0.05); }
+                        else if (p10 < 0.47) { eyeScale10 = lerp(1.06, 0.96, (p10-0.42)/0.05); }
+                        else if (p10 < 0.52) { eyeScale10 = lerp(0.96, 1.02, (p10-0.47)/0.05); }
+                        else if (p10 < 0.57) { eyeScale10 = lerp(1.02, 1, (p10-0.52)/0.05); }
+                        else if (p10 < 0.67) { eyeScale10 = 1; }
+                        else if (p10 < 0.82) { eyeScale10 = lerp(1, 1.04, (p10-0.67)/0.15); }
+                        else if (p10 < 0.90) { eyeScale10 = lerp(1.04, 0.98, (p10-0.82)/0.08); }
+                        else { eyeScale10 = 0.98; }
+                    }
+
+                    scaleL = scaleR = eyeScale10;
+
+                    let baseScale = (t10 < 3080) ? 2.1 : 1.8;
+                    iconL.style.setProperty('--icon-x', '0px');
+                    iconL.style.setProperty('--icon-y', '0px');
+                    iconR.style.setProperty('--icon-x', '0px');
+                    iconR.style.setProperty('--icon-y', '0px');
+                    
+                    iconL.style.setProperty('--icon-scale-x', iconScaleX10 * baseScale);
+                    iconL.style.setProperty('--icon-scale-y', iconScaleY10 * baseScale);
+                    iconL.style.setProperty('--icon-rot', iconRot10 + 'deg');
+                    iconL.style.setProperty('--icon-opacity', iconOpacity10);
+                    
+                    iconR.style.setProperty('--icon-scale-x', iconScaleX10 * baseScale);
+                    iconR.style.setProperty('--icon-scale-y', iconScaleY10 * baseScale);
+                    iconR.style.setProperty('--icon-rot', iconRot10 + 'deg');
+                    iconR.style.setProperty('--icon-opacity', iconOpacity10);
+
+                    pupilL.style.setProperty('--bg-scale-x', pupilScale10);
+                    pupilL.style.setProperty('--bg-scale-y', pupilScale10);
+                    pupilR.style.setProperty('--bg-scale-x', pupilScale10);
+                    pupilR.style.setProperty('--bg-scale-y', pupilScale10);
+
+                    speedL = speedR = 0.2;
+                    noiseAmp = 0;
+
+                    break;
+
+                case 411: // 音量增加
+                case 412: // 音量减少
+                    let tVol = localTime % 2000; 
+                    let R = 33; 
+                    
+                    let baseAngle = Math.PI; 
+                    let angleOffset = (currentMode === 411) ? (Math.PI * 0.4) : (-Math.PI * 0.4); 
+                    let targetAngle = baseAngle + angleOffset;
+                    
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    scaleL = scaleR = 1;
+                    
+                    let currentAngle = baseAngle;
+                    let currentR = R; 
+
+                    if (tVol < 300) {
+                        let p = tVol / 300;
+                        let ease = p * p * (3 - 2 * p);
+                        currentAngle = baseAngle;
+                        currentR = R * ease;
+                        speedL = speedR = 0.3;
+                    } else if (tVol < 900) {
+                        let p = (tVol - 300) / 600;
+                        let ease = p * p * (3 - 2 * p);
+                        currentAngle = baseAngle + angleOffset * ease;
+                        currentR = R;
+                        speedL = speedR = 0.4;
+                    } else if (tVol < 1500) {
+                        currentAngle = targetAngle;
+                        currentR = R;
+                        speedL = speedR = 0.1;
+                    } else {
+                        let p = (tVol - 1500) / 500;
+                        let ease = p * p * (3 - 2 * p);
+                        currentAngle = targetAngle; 
+                        currentR = R * (1 - ease); 
+                        speedL = speedR = 0.3;
+                    }
+
+                    pL.tx = currentR * Math.cos(currentAngle);
+                    pL.ty = currentR * Math.sin(currentAngle);
+                    pR.tx = currentR * Math.cos(currentAngle);
+                    pR.ty = currentR * Math.sin(currentAngle);
+                    
+                    noiseAmp = 0;
+                    break;
+            }
+
+            pL.x = lerp(pL.x, pL.tx + getNoise(noiseAmp), speedL);
+            pL.y = lerp(pL.y, pL.ty + getNoise(noiseAmp), speedL);
+            pR.x = lerp(pR.x, pR.tx + getNoise(noiseAmp), speedR);
+            pR.y = lerp(pR.y, pR.ty + getNoise(noiseAmp), speedR);
+
+            pL.scale = lerp(pL.scale, scaleL, 0.2);
+            pR.scale = lerp(pR.scale, scaleR, 0.2);
+            
+            pL.rot = targetRotL; 
+            pR.rot = targetRotR;
+
+            function constrain(p) {
+                let limit = (currentMode === 1 || currentMode === 2) ? 15 : 33; 
+                let dist = Math.sqrt(p.x*p.x + p.y*p.y);
+                if (dist > limit) {
+                    p.x = (p.x / dist) * limit;
+                    p.y = (p.y / dist) * limit;
+                }
+            }
+            constrain(pL); constrain(pR);
+
+            pupilL.style.transform = `translate(${pL.x}px, ${pL.y}px) scale(${pL.scale}) rotate(${pL.rot}deg)`;
+            pupilR.style.transform = `translate(${pR.x}px, ${pR.y}px) scale(${pR.scale}) rotate(${pR.rot}deg)`;
+
+            let parallaxRatio = 0.22;
+            let scleraX_L = pL.x * parallaxRatio;
+            let scleraY_L = pL.y * parallaxRatio;
+            let scleraX_R = pR.x * parallaxRatio;
+            let scleraY_R = pR.y * parallaxRatio;
+            
+            pupilL.closest('.eye').style.setProperty('--sclera-x', `${scleraX_L}px`);
+            pupilL.closest('.eye').style.setProperty('--sclera-y', `${scleraY_L}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-x', `${scleraX_R}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-y', `${scleraY_R}px`);
+            
+            pupilL.parentElement.style.setProperty('--sclera-x', `${scleraX_L}px`);
+            pupilL.parentElement.style.setProperty('--sclera-y', `${scleraY_L}px`);
+            pupilR.parentElement.style.setProperty('--sclera-x', `${scleraX_R}px`);
+            pupilR.parentElement.style.setProperty('--sclera-y', `${scleraY_R}px`);
+
+            eyeL.style.setProperty('--lid-top', currentLidTop + '%');
+            eyeL.style.setProperty('--lid-bottom', currentLidBottom + '%');
+            eyeR.style.setProperty('--lid-top', currentLidTop + '%');
+            eyeR.style.setProperty('--lid-bottom', currentLidBottom + '%');
+        }
+
+        let lastTime = performance.now();
+        function loop(now) {
+            let dt = now - lastTime;
+            lastTime = now;
+            updateLogic(dt);
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+
+        function triggerBlink(duration) {
+            document.querySelectorAll('.eye').forEach(eye => {
+                eye.style.setProperty('--blink-dur', (duration/1000) + 's');
+                eye.classList.remove('is-blinking');
+                void eye.offsetWidth; 
+                eye.classList.add('is-blinking');
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Emoji Hub</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
+            background-color: #050505;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: white;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        /* 左侧主导航栏：用于切换大类 */
+        .sidebar {
+            width: 140px;
+            background: rgba(255, 255, 255, 0.05);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 15px;
+            box-sizing: border-box;
+            gap: 15px;
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+        
+        .nav-title {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            margin-bottom: 10px;
+            color: #fff;
+            letter-spacing: 1px;
+        }
+
+        .nav-btn {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 14px 10px;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+            outline: none;
+            font-size: 15px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .nav-btn.active, .nav-btn:hover {
+            background: white;
+            color: black;
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.5);
+        }
+
+        /* iframe 容器 */
+        .content {
+            flex: 1;
+            height: 100vh;
+            position: relative;
+        }
+
+        iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease-in-out;
+        }
+
+        iframe.active {
+            opacity: 1;
+            pointer-events: auto;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="nav-title">Emoji Hub</div>
+        <!-- Googly Eyes -> Daily -->
+        <button class="nav-btn active" onclick="switchPage('daily', this)">Daily</button>
+        <!-- Touch -> Touch -->
+        <button class="nav-btn" onclick="switchPage('touch', this)">Touch</button>
+        <!-- Index -> Music -->
+        <button class="nav-btn" onclick="switchPage('music', this)">Music</button>
+        <!-- Hear -> Hear -->
+        <button class="nav-btn" onclick="switchPage('hear', this)">Hear</button>
+        <!-- Special_eyes -> Command -->
+        <button class="nav-btn" onclick="switchPage('command', this)">Command</button>
+    </div>
+    
+    <div class="content">
+        <!-- 对应 Googly Eyes -->
+        <iframe id="daily" src="daily.html" class="active"></iframe>
+        <!-- 对应 Touch -->
+        <iframe id="touch" src="touch.html"></iframe>
+        <!-- 对应 Index -->
+        <iframe id="music" src="music.html"></iframe>
+        <!-- 对应 Hear -->
+        <iframe id="hear" src="hear.html"></iframe>
+        <!-- 对应 Special_eyes -->
+        <iframe id="command" src="command.html"></iframe>
+    </div>
+
+    <script>
+        function switchPage(pageId, btn) {
+            // 更新按钮状态
+            document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            // 更新 iframe 状态
+            document.querySelectorAll('iframe').forEach(f => f.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+        }
+    </script>
+</body>
+</html>

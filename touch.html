@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Touch Interaction</title>
+    <style>
+        /* Base styles */
+        body { margin: 0; height: 100vh; background-color: #050505; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
+        .tabs { position: fixed; top: 0; right: 0; bottom: 0; width: 220px; display: flex; flex-direction: column; gap: 8px; background: rgba(255, 255, 255, 0.05); padding: 20px; overflow-y: auto; backdrop-filter: blur(10px); z-index: 100; border-left: 1px solid rgba(255,255,255,0.1); scrollbar-width: none; -ms-overflow-style: none; }
+        .tabs::-webkit-scrollbar { display: none; }
+        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; text-align: left; }
+        .tab.active, .tab:hover { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        .tab-group-title { color: #aaa; font-size: 12px; margin-top: 15px; margin-bottom: 5px; padding-left: 5px; text-transform: uppercase; letter-spacing: 1px; }
+        
+        .scene { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding-right: 260px; box-sizing: border-box; }
+        
+        .eye-container { display: flex; gap: 60px; position: relative; }
+
+        /* 1. 物理 TFT 屏幕 (硬件边框约束) */
+        .eye { 
+            width: 160px; height: 160px; 
+            background-color: transparent; 
+            border-radius: 50%; 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        /* 瞬目反射 (眼睑) */
+        .eyelid-top, .eyelid-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: #080808; 
+            z-index: 10; 
+        }
+        .eyelid-top {
+            top: 0;
+            height: 85%;
+            border-bottom-left-radius: 50% 8%;
+            border-bottom-right-radius: 50% 8%;
+            transform: translateY(-100%);
+        }
+        .eyelid-bottom {
+            bottom: 0;
+            height: 25%;
+            border-top-left-radius: 50% 10%;
+            border-top-right-radius: 50% 10%;
+            transform: translateY(100%);
+        }
+
+        .eye.is-blinking .eyelid-top { animation: blink-top var(--blink-dur, 0.3s) forwards; }
+        .eye.is-blinking .eyelid-bottom { animation: blink-bottom var(--blink-dur, 0.3s) forwards; }
+
+        /* 左眼和右眼添加微小的神经延迟 */
+        .eye:nth-child(2).is-blinking .eyelid-top, 
+        .eye:nth-child(2).is-blinking .eyelid-bottom {
+            animation-delay: 0.04s;
+        }
+
+        @keyframes blink-top {
+            0% { transform: translateY(-100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); } 
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); } 
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes blink-bottom {
+            0% { transform: translateY(100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); }
+            100% { transform: translateY(100%); }
+        }
+
+        /* 使用专门的裁剪容器作为真实的眼白图层，避免抗锯齿白边透出 */
+        .sclera-clip {
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            background-color: #f4f4f4;
+            border-radius: 50%;
+            overflow: hidden;
+            z-index: 1;
+            /* 修复 Webkit 渲染下的裁剪白边问题 */
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            /* 跟随眼白图层一起做视差位移，保证裁剪区域与视觉上的眼白完全重合 */
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 使用 ::after 作为内阴影遮罩层，盖在瞳孔上方，增强 3D 立体感并遮挡边缘 */
+        .eye::after {
+            content: '';
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            border-radius: 50%;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
+            z-index: 3;
+            pointer-events: none;
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 眼珠/瞳孔 基础样式 */
+        .pupil {
+            width: 70px; height: 70px;
+            background-color: transparent;
+            border-radius: 50%;
+            position: absolute; top: 50%; left: 50%;
+            margin-left: -35px; margin-top: -35px;
+            z-index: 2;
+        }
+        
+        /* 使用伪元素作为眼珠背景，利用 transform 缩放避免 Layout 重排卡顿 */
+        .pupil::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 70px; height: 70px;
+            background-color: #000;
+            border-radius: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px))) scaleX(var(--bg-scale-x, 1)) scaleY(var(--bg-scale-y, 1));
+            z-index: -1;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .pupil.no-transition::before {
+            transition: none;
+        }
+
+        /* --- 特殊形变类 (Shape Classes) --- */
+        
+        /* 1. 星星眼 (Sphere 风格：巨大椭圆 + 内部星光) */
+        .pupil.shape-star {
+        }
+
+        /* 星星高光容器 (仅在星星眼模式下显示) */
+        .star-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-star .star-highlights {
+            display: block;
+        }
+
+        /* 泪光容器 (仅在眼泪汪汪模式下显示) */
+        .tear-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-teary .tear-highlights {
+            display: block;
+        }
+
+        /* 纯白色的四角星星 */
+        .star-shine {
+            position: absolute;
+            background-color: white;
+            clip-path: polygon(50% 0%, 65% 35%, 100% 50%, 65% 65%, 50% 100%, 35% 65%, 0% 50%, 35% 35%);
+            transform-origin: center center;
+            transform: scale(var(--star-scale, 1)) rotate(var(--star-rot, 0deg));
+        }
+
+        /* 主星 (大，左上侧) */
+        .star-main {
+            width: 45px; height: 45px;
+            top: 12%; left: 15%;
+        }
+
+        /* 副星1 (小，左下侧) */
+        .star-sub1 {
+            width: 22px; height: 22px;
+            bottom: 18%; left: 22%;
+        }
+
+        /* 副星2 (小，右上侧 -> 往左下偏移) */
+        .star-sub2 {
+            width: 18px; height: 18px;
+            top: 35%; right: 22%;
+        }
+
+        /* 眼泪汪汪的各种高光形状 */
+        .tear-shine {
+            position: absolute;
+            background-color: white;
+            border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%;
+            transform-origin: center center;
+            opacity: 1; 
+            animation: tear-morph 3s ease-in-out infinite;
+        }
+
+        @keyframes tear-morph {
+            0%   { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+            25%  { border-radius: 54% 46% 53% 47% / 46% 54% 48% 52%; }
+            50%  { border-radius: 46% 54% 45% 55% / 55% 45% 56% 44%; }
+            75%  { border-radius: 51% 49% 55% 45% / 49% 51% 45% 55%; }
+            100% { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+        }
+
+        /* 泪光 - 主高光 (左侧偏上的大水滴) */
+        .tear-main {
+            width: 56px; height: 56px; 
+            top: 10%; left: 15%; 
+            transform: scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.2s;
+        }
+
+        /* 泪光 - 次高光1 */
+        .tear-sub1 {
+            width: 32px; height: 32px; 
+            bottom: 4.5%; right: 36%; 
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-y, 1)) scaleY(var(--tear-scale-x, 1));
+            animation-duration: 2.7s;
+        }
+
+        /* 泪光 - 次高光2 */
+        .tear-sub2 {
+            width: 28px; height: 28px; 
+            bottom: 34%; right: 6.5%; 
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.5s;
+        }
+
+        /* 模式说明浮层 */
+        .desc-overlay {
+            position: fixed; top: 40px; left: calc(50% - 130px); transform: translateX(-50%);
+            text-align: center; max-width: 800px; width: 90%;
+            background: rgba(0,0,0,0.4); padding: 20px 30px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: none; z-index: 50;
+        }
+        .desc-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; color: #fff; letter-spacing: 1px; }
+        .desc-text { font-size: 15px; color: #ddd; line-height: 1.6; }
+        .desc-emotion { display: none; }
+    </style>
+</head>
+<body>
+    <div class="desc-overlay">
+        <div class="desc-title" id="mode-title">请选择右侧的触摸交互模式</div>
+        <div class="desc-text" id="mode-desc">基于电容触摸/物理敲击的专属交互反馈</div>
+        <div class="desc-emotion" id="mode-emotion"></div>
+    </div>
+
+    <div class="scene">
+        <div class="eye-container" id="head-container">
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="pupil" id="pupil-l">
+                        <div class="star-highlights">
+                            <div class="star-shine star-main"></div>
+                            <div class="star-shine star-sub1"></div>
+                            <div class="star-shine star-sub2"></div>
+                        </div>
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="pupil" id="pupil-r">
+                        <div class="star-highlights">
+                            <div class="star-shine star-main"></div>
+                            <div class="star-shine star-sub1"></div>
+                            <div class="star-shine star-sub2"></div>
+                        </div>
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab-group-title">短摸 / 轻拍</div>
+        <button class="tab" onclick="setMode(201, event)">1. 纳尼？！ (What)</button>
+        <button class="tab" onclick="setMode(202, event)">2. 摇摇 (Toon Bounce)</button>
+        <button class="tab" onclick="setMode(203, event)">3. 震惊 (Shock)</button>
+        <button class="tab" onclick="setMode(211, event)">11. 蛮王冲撞 (Zip)</button>
+
+        <div class="tab-group-title">长摸 / 持续抚摸</div>
+        <button class="tab" onclick="setMode(204, event)">4. 坠入爱河 (Love Struck)</button>
+        <button class="tab" onclick="setMode(205, event)">5. 星星眼 (Star Eyes)</button>
+        <button class="tab" onclick="setMode(206, event)">6. 委屈 (Puppy Dog)</button>
+
+        <div class="tab-group-title">狂戳 / 连续敲击</div>
+        <button class="tab" onclick="setMode(207, event)">7. 眩晕 (Bonked)</button>
+        <button class="tab" onclick="setMode(208, event)">8. 弹弹 (Pinball)</button>
+        <button class="tab" onclick="setMode(209, event)">9. 愤怒 (Anger)</button>
+        <button class="tab" onclick="setMode(210, event)">10. 大的来了 (Big eyes)</button>
+    </div>
+
+    <script>
+        const modes = {
+            201: { t: "1. 纳尼？！ (What)", d: "眼珠先看向一边，平淡收回后突然意识到不对，瞬间砸回原方向并夸张放大，随后直接归位。", e: "突然被拍了一下" },
+            202:  { t: "2. 摇摇 (Toon Bounce)", d: "到达目标前，故意过度拉伸然后反弹，产生极强的果冻弹性物理错觉。", e: "肉感Q萌反馈" },
+            203: { t: "3. 震惊 (Shock)", d: "眼睛死死盯住正前方，并伴随极高频、极小幅度的原地震颤。", e: "有点受惊" },
+            
+            204:  { t: "4. 坠入爱河 (Love Struck)", d: "瞳孔极其缓慢放大到极致，像没有重力一样伴随波浪线向斜上方缓慢漂浮。", e: "沉醉舒服" },
+            205: { t: "5. 星星眼 (Star Eyes)", d: "巨大的水汪汪眼眸，内部闪烁着四角星光。情绪极度激动、委屈或卖萌。", e: "卖萌崇拜", shape: "shape-star" },
+            206: { t: "6. 委屈 (Puppy Dog)", d: "眼珠移动到顶部中间靠近，微微缓慢左右晃动。", e: "撒娇求抚摸" },
+            207: { t: "7. 眩晕 (Bonked)", d: "两只眼珠在眼眶里画圈，相位错开，瞳孔大小不规则缩放，打破双眼同步。", e: "戳晕了" },
+            208: { t: "8. 弹弹 (Pinball)", d: "瞳孔像弹珠一样在眼眶内部直线高速反弹，伴随边界撞击。", e: "脑壳嗡嗡作响" },
+            209: { t: "9. 愤怒 (Anger)", d: "死死盯住前方，快速向中间靠近（斗鸡眼），伴随剧烈震颤蓄力，随后向眼眶外侧进行单次极高频的狂暴撞击并被弹回，最后缓慢平息。", e: "生气爆发警告" },
+            210: { t: "10. 大的来了 (Big eyes)", d: "眼珠变成斗鸡眼并缓慢向下压，伴随频率越来越高的震颤，到达极限后瞬间向上猛弹爆发。", e: "终极警告" },
+            211: { t: "11. 蛮王冲撞 (Zip)", d: "向左上方蓄力并伴随剧烈抖动，随后瞬间瞬移到右下方目标位置。", e: "短摸触发" }
+        };
+
+        // State variables
+        let currentMode = null;
+        let internalMode = null;
+        let time = 0;
+        
+        // Physical states
+        let pL = { x: 0, y: 0, tx: 0, ty: 0 };
+        let pR = { x: 0, y: 0, tx: 0, ty: 0 };
+        let head = { x: 0, y: 0, tx: 0, ty: 0 };
+        let modeStartTime = 0;
+
+        const titleEl = document.getElementById('mode-title');
+        const descEl = document.getElementById('mode-desc');
+        const emotionEl = document.getElementById('mode-emotion');
+        const pupilL = document.getElementById('pupil-l');
+        const pupilR = document.getElementById('pupil-r');
+        const headContainer = document.getElementById('head-container');
+
+        const hlL = pupilL.querySelector('.star-highlights');
+        const hlR = pupilR.querySelector('.star-highlights');
+        const lMain = pupilL.querySelector('.star-main');
+        const lSub1 = pupilL.querySelector('.star-sub1');
+        const lSub2 = pupilL.querySelector('.star-sub2');
+        const rMain = pupilR.querySelector('.star-main');
+        const rSub1 = pupilR.querySelector('.star-sub1');
+        const rSub2 = pupilR.querySelector('.star-sub2');
+
+        const tearHlL = pupilL.querySelector('.tear-highlights');
+        const tearHlR = pupilR.querySelector('.tear-highlights');
+        const lTearMain = pupilL.querySelector('.tear-main');
+        const lTearSub1 = pupilL.querySelector('.tear-sub1');
+        const lTearSub2 = pupilL.querySelector('.tear-sub2');
+        const rTearMain = pupilR.querySelector('.tear-main');
+        const rTearSub1 = pupilR.querySelector('.tear-sub1');
+        const rTearSub2 = pupilR.querySelector('.tear-sub2');
+
+        function setMode(m, e) {
+            currentMode = m;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if(e) e.currentTarget.classList.add('active');
+            
+            titleEl.innerText = modes[m].t;
+            descEl.innerText = modes[m].d;
+            emotionEl.innerText = "交互外显: " + modes[m].e;
+            emotionEl.style.display = 'block';
+
+            internalMode = m;
+            applyInternalMode(internalMode);
+        }
+
+        function applyInternalMode(m) {
+            pupilL.className = 'pupil ' + (modes[m].shape || '');
+            pupilR.className = 'pupil ' + (modes[m].shape || '');
+
+            if (m === 205 || m === 999) {
+                pupilL.classList.add('no-transition');
+                pupilR.classList.add('no-transition');
+            } else {
+                pupilL.classList.remove('no-transition');
+                pupilR.classList.remove('no-transition');
+                pupilL.style.setProperty('--bg-scale-x', 1);
+                pupilL.style.setProperty('--bg-scale-y', 1);
+                pupilL.style.setProperty('--bg-offset-x', '0px');
+                pupilL.style.setProperty('--bg-offset-y', '0px');
+                pupilR.style.setProperty('--bg-scale-x', 1);
+                pupilR.style.setProperty('--bg-scale-y', 1);
+                pupilR.style.setProperty('--bg-offset-x', '0px');
+                pupilR.style.setProperty('--bg-offset-y', '0px');
+            }
+
+            pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+            pL.rot = 0; pR.rot = 0;
+            pL.vx = undefined; pL.vy = undefined; pR.vx = undefined; pR.vy = undefined;
+            head.tx = 0; head.ty = 0;
+            pL.scale = 1; pR.scale = 1;
+            modeStartTime = time;
+        }
+
+        function getLoopDur(m) {
+            let dur = [999, 999, 999, 208, 999].includes(m) ? 2000 : 4000;
+            if (m === 205 || m === 999) dur = 6000;
+            if (m >= 201 && m <= 211) {
+                dur = 5000;
+                if (m === 208) dur = 2000;
+                if (m === 203) dur = 3000;
+                if (m === 209) dur = 6000;
+                if (m === 206) dur = 4000;
+                if (m === 210) dur = 6000;
+                if (m === 211) dur = 4000;
+            }
+            return dur;
+        }
+
+        function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+        function getNoise(amp) { return (Math.random() + Math.random() + Math.random() - 1.5) * amp; }
+
+        function updateLogic(dt) {
+            time += dt;
+
+            if (internalMode === null) return; // Wait for selection
+
+            let speedL = 0.15, speedR = 0.15; 
+            let noiseAmp = 0;
+            let headSpeed = 0.1;
+            let scaleL = 1, scaleR = 1;
+
+            head.tx = 0; head.ty = 0;
+            
+            let loopDur = getLoopDur(internalMode);
+            let localTime = time - modeStartTime;
+            let t = localTime % loopDur;
+
+            switch(internalMode) {
+                case 205: // 星星眼
+                    let centerF = 1;
+                    let transDur = 600; 
+                    if (t < transDur) {
+                        centerF = t / transDur;
+                    } else if (t > loopDur - transDur) {
+                        centerF = (loopDur - t) / transDur;
+                    }
+                    centerF = centerF * centerF * (3 - 2 * centerF); 
+
+                    let starF = 0;
+                    let starDelay = 600; 
+                    let starFadeDur = 300; 
+                    
+                    if (t > starDelay && t < loopDur - starDelay) {
+                        if (t < starDelay + starFadeDur) {
+                            starF = (t - starDelay) / starFadeDur;
+                        } else if (t > loopDur - starDelay - starFadeDur) {
+                            starF = (loopDur - starDelay - t) / starFadeDur;
+                        } else {
+                            starF = 1;
+                        }
+                    }
+                    starF = starF * starF * (3 - 2 * starF);
+
+                    let currentScale = (70 + 42 * centerF) / 70; 
+                    
+                    let slideF = 0;
+                    let slideStart = transDur + 200; 
+                    let slideEnd = loopDur - transDur - 200; 
+                    if (t > slideStart && t < slideEnd) {
+                        let slideProgress = (t - slideStart) / (slideEnd - slideStart);
+                        slideF = Math.sin(slideProgress * Math.PI); 
+                    }
+                    
+                    let offsetX = (-5 + 10 * slideF) * centerF;
+                    let offsetY = -4 * centerF;
+                    
+                    pupilL.style.setProperty('--bg-scale-x', currentScale);
+                    pupilL.style.setProperty('--bg-scale-y', currentScale);
+                    pupilL.style.setProperty('--bg-offset-x', offsetX + 'px');
+                    pupilL.style.setProperty('--bg-offset-y', offsetY + 'px');
+                    pupilR.style.setProperty('--bg-scale-x', currentScale);
+                    pupilR.style.setProperty('--bg-scale-y', currentScale);
+                    pupilR.style.setProperty('--bg-offset-x', offsetX + 'px');
+                    pupilR.style.setProperty('--bg-offset-y', offsetY + 'px');
+
+                    if (hlL) hlL.style.opacity = starF;
+                    if (hlR) hlR.style.opacity = starF;
+
+                    if (starF > 0.01) {
+                        let starScaleMain = 1 + Math.sin(time / 300) * 0.2;
+                        let starScaleSub1 = 1 + Math.cos(time / 200) * 0.3;
+                        let starScaleSub2 = 1 + Math.sin(time / 250) * 0.4;
+                        let starRot = Math.sin(time / 1000) * 15; 
+
+                        lMain.style.setProperty('--star-scale', starScaleMain);
+                        lMain.style.setProperty('--star-rot', starRot + 'deg');
+                        lSub1.style.setProperty('--star-scale', starScaleSub1);
+                        lSub1.style.setProperty('--star-rot', -starRot + 'deg'); 
+                        lSub2.style.setProperty('--star-scale', starScaleSub2);
+                        lSub2.style.setProperty('--star-rot', (starRot * 1.5) + 'deg'); 
+
+                        rMain.style.setProperty('--star-scale', starScaleMain);
+                        rMain.style.setProperty('--star-rot', starRot + 'deg');
+                        rSub1.style.setProperty('--star-scale', starScaleSub1);
+                        rSub1.style.setProperty('--star-rot', -starRot + 'deg');
+                        rSub2.style.setProperty('--star-scale', starScaleSub2);
+                        rSub2.style.setProperty('--star-rot', (starRot * 1.5) + 'deg');
+                    }
+
+                    pL.tx = offsetX * 0.4; pL.ty = offsetY * 0.4;
+                    pR.tx = offsetX * 0.4; pR.ty = offsetY * 0.4;
+                    
+                    let sway = Math.sin(time / 600) * 3 * centerF;
+                    pL.tx += sway; pR.tx += sway;
+
+                    scaleL = scaleR = 1 + Math.sin(time / 1000) * 0.03 * centerF;
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.2);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.2);
+
+                    speedL = speedR = 0.05; 
+                    noiseAmp = 0; 
+                    break;
+
+                case 202: // Toon Bounce
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                    } else {
+                        let cycle = Math.floor((t - 200) / 1200); // 3 cycles
+                        let cycleT = ((t - 200) % 1200) / 1200; // 0 to 1
+                        
+                        let targetX = cycle === 1 ? -25 : (cycle === 2 ? 0 : 25);
+                        let targetY = cycle === 1 ? 15 : (cycle === 2 ? 0 : 15);
+                        
+                        let spring = Math.exp(-cycleT * 6) * Math.cos(cycleT * 25); // 弹簧公式
+                        
+                        pL.tx = targetX - spring * 35; // 反向overshoot
+                        pL.ty = targetY - spring * 35;
+                        pR.tx = targetX - spring * 35;
+                        pR.ty = targetY - spring * 35;
+                        
+                        speedL = speedR = 0.4;
+                    }
+                    break;
+                    
+                case 201: // Double Take (纳尼)
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.2;
+                    } else if (t < 800) {
+                        pL.tx = 30; pL.ty = -10;
+                        pR.tx = 30; pR.ty = -10;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.25;
+                    } else if (t < 1600) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.05;
+                    } else if (t < 1700) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0;
+                    } else if (t < 2700) {
+                        let elapsed = t - 1700;
+                        let impact = Math.min(elapsed / 1000, 1);
+                        let overshoot = elapsed > 1000 ? 0 : Math.exp(-impact * 5) * Math.cos(impact * 20); 
+                        
+                        pL.tx = 30 + overshoot * 10; pL.ty = -10;
+                        pR.tx = 30 + overshoot * 10; pR.ty = -10;
+                        
+                        scaleL = scaleR = 1.4 + overshoot * 0.4;
+                        speedL = speedR = 0.9; 
+                    } else {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1.0;
+                        speedL = speedR = 0.15;
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.3);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.3);
+                    break;
+
+                case 204: // Love Struck (坠入爱河)
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.1;
+                    } else {
+                        let floatProgress = (t - 200) / 3600; 
+                        scaleL = scaleR = 1 + floatProgress * 0.8; 
+                        pL.tx = Math.sin(floatProgress * Math.PI * 6) * 15;
+                        pL.ty = -floatProgress * 30; 
+                        pR.tx = Math.sin(floatProgress * Math.PI * 6) * 15;
+                        pR.ty = -floatProgress * 30;
+                        speedL = speedR = 0.05; 
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.05);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.05);
+                    break;
+
+                case 207: // Bonked (眩晕)
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.2;
+                    } else {
+                        let speed1 = time / 150;
+                        let speed2 = time / 200;
+                        
+                        pL.tx = Math.cos(speed1) * 25;
+                        pL.ty = Math.sin(speed1) * 25;
+                        pR.tx = Math.cos(speed2) * 25;
+                        pR.ty = Math.sin(speed2) * 25;
+                        
+                        scaleL = 1 + Math.sin(time / 100) * 0.3;
+                        scaleR = 1 + Math.cos(time / 120) * 0.3;
+                        speedL = speedR = 0.3;
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.2);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.2);
+                    break;
+
+                case 208: // Pinball Bounce (弹珠反弹)
+                    if (t < 100 || t > 1900) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                    } else {
+                        if (pL.vx === undefined) {
+                            let v1 = 12, v2 = 13; 
+                            let a1 = Math.random() * Math.PI * 2;
+                            let a2 = Math.random() * Math.PI * 2;
+                            pL.vx = Math.cos(a1) * v1; pL.vy = Math.sin(a1) * v1;
+                            pR.vx = Math.cos(a2) * v2; pR.vy = Math.sin(a2) * v2;
+                            pL.tx = 1; pL.ty = 1;
+                            pR.tx = -1; pR.ty = -1;
+                        }
+                        
+                        let step = dt / 16; 
+                        pL.tx += pL.vx * step;
+                        pL.ty += pL.vy * step;
+                        pR.tx += pR.vx * step;
+                        pR.ty += pR.vy * step;
+                        
+                        function bounce(p) {
+                            let dist = Math.sqrt(p.tx*p.tx + p.ty*p.ty);
+                            if (dist > 35) {
+                                let nx = p.tx / dist;
+                                let ny = p.ty / dist;
+                                let v_dot_n = p.vx * nx + p.vy * ny;
+                                if (v_dot_n > 0) { 
+                                    let rx = p.vx - 2 * v_dot_n * nx;
+                                    let ry = p.vy - 2 * v_dot_n * ny;
+                                    let angle = Math.atan2(ry, rx);
+                                    angle += (Math.random() - 0.5) * 0.8; 
+                                    let speed = Math.sqrt(rx*rx + ry*ry);
+                                    p.vx = Math.cos(angle) * speed;
+                                    p.vy = Math.sin(angle) * speed;
+                                }
+                                p.tx = nx * 35;
+                                p.ty = ny * 35;
+                            }
+                        }
+                        bounce(pL);
+                        bounce(pR);
+                        
+                        speedL = 1; 
+                        speedR = 1;
+                    }
+                    break;
+
+                case 203: // Shock Tremor (震惊)
+                    if (t < 100 || t > 2900) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                        noiseAmp = 0;
+                    } else {
+                        pL.tx = 0; pL.ty = 0;
+                        pR.tx = 0; pR.ty = 0;
+                        noiseAmp = 3; 
+                        speedL = speedR = 1; 
+                    }
+                    break;
+
+                case 209: // Boiling Anger (狂暴撞击)
+                    if (t < 200 || t > 5800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.2;
+                        noiseAmp = 0;
+                    } else if (t < 3000) {
+                        // 1. 蓄力期 (200ms - 3000ms)
+                        let holdPhase = (t - 200) / 2800; 
+                        pL.tx = holdPhase * 25; 
+                        pR.tx = -holdPhase * 25;
+                        pL.ty = 0; pR.ty = 0;
+                        scaleL = scaleR = 1 - holdPhase * 0.15; 
+                        noiseAmp = holdPhase * 6; 
+                        speedL = speedR = 0.8; 
+                    } else if (t < 3600) {
+                        // 2. 爆发期：狂暴单次撞击 (3000ms - 3600ms)
+                        // 使用连续的弹簧物理公式，消除硬直，实现 "弹弹" 的 Q 弹回弹感
+                        let burstTime = t - 3000;
+                        let cycleT = burstTime / 600; // 0 到 1
+                        
+                        // 弹簧公式：极速冲出，然后来回衰减震荡
+                        // sin(cycleT * Math.PI * 7) 提供高频的来回弹力
+                        let spring = Math.exp(-cycleT * 5) * Math.sin(cycleT * Math.PI * 7);
+                        
+                        // 振幅设定：保证第一下能结实地撞到眼眶边缘 (约束半径约33px)
+                        let ampX = 65; 
+                        let ampY = -55; // 往上侧砸出并回弹
+
+                        pL.tx = -spring * ampX;
+                        pL.ty = spring * ampY;
+                        pR.tx = spring * ampX;
+                        pR.ty = spring * ampY;
+                        
+                        scaleL = scaleR = 1.3; 
+                        noiseAmp = 0; 
+                        speedL = speedR = 0.95; // 速度拉满，完全交由数学公式驱动轨迹
+                    } else {
+                        // 3. 平息期 (3600ms - 5800ms)
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        noiseAmp = 0;
+                        speedL = speedR = 0.05; 
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.3);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.3);
+                    break;
+
+                case 206: // Puppy Dog Eyes (委屈)
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                    } else {
+                        let sway = Math.sin(time / 400) * 8; 
+                        pL.tx = 10 + sway; pL.ty = -30;
+                        pR.tx = -10 + sway; pR.ty = -30;
+                        speedL = speedR = 0.08; 
+                    }
+                    break;
+
+                case 210: // Holding Sneeze (大的来了)
+                    if (t < 200 || t > 5800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        noiseAmp = 0;
+                        speedL = speedR = 0.2;
+                    } else if (t < 3500) {
+                        let holdPhase = (t - 200) / 3300; 
+                        let shake = Math.sin(t / (30 - holdPhase*20)) * (holdPhase * 4); 
+                        
+                        pL.tx = 15 + shake; pL.ty = holdPhase * 25 + shake;
+                        pR.tx = -15 + shake; pR.ty = holdPhase * 25 + shake;
+                        scaleL = scaleR = 1 - holdPhase * 0.2; 
+                        speedL = speedR = 0.05 + holdPhase * 0.5; 
+                        noiseAmp = 0;
+                    } else if (t < 4600) {
+                        pL.tx = 5; pL.ty = -35;
+                        pR.tx = -5; pR.ty = -35;
+                        scaleL = scaleR = 1.2; 
+                        noiseAmp = 4; 
+                        speedL = speedR = 0.8; 
+                    } else {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        noiseAmp = 0;
+                        speedL = speedR = 0.05; 
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.3);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.3);
+                    break;
+                case 211: // Zip (Squash & Stretch)
+                    if (t < 200 || t > 3800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1;
+                        speedL = speedR = 0.2;
+                        noiseAmp = 0;
+                    } else if (t < 900) {
+                        // 预备动作：向左上方蓄力，瞳孔缩小 (Squash)，伴随高频剧烈抖动
+                        pL.tx = -25; pL.ty = -25; pR.tx = -25; pR.ty = -25;
+                        scaleL = scaleR = 0.8; // 蓄力阶段眼珠稍微大一些 (从0.6提升到0.8)
+                        // 必须调高跟随速度，否则抖动效果会被低速过滤掉
+                        speedL = speedR = 0.8; 
+                        noiseAmp = 2.5; // 与弱小无助同级别的极限抖动
+                    } else if (t < 2400) {
+                        // 极速冲刺到右下角并带有强烈的硬碰撞回弹
+                        let zipProgress = (t - 900) / 1500; 
+                        let currentPos;
+                        
+                        if (zipProgress < 0.08) {
+                            // 冲刺阶段 (前8%时间，约120ms)：越来越快，狠狠砸向边缘
+                            let dash = zipProgress / 0.08;
+                            currentPos = -25 + 53 * Math.pow(dash, 2); 
+                        } else {
+                            // 碰撞回弹阶段：撞击眼眶边缘(28)后，立刻反向往中心弹回
+                            let bounceT = (zipProgress - 0.08) / 0.92;
+                            // 物理硬弹跳公式：利用 abs(sin) 制造在边缘处的瞬间折返(速度突变)
+                            // 撞击点是 28，往中心回弹的最大振幅是 35
+                            currentPos = 28 - 35 * Math.exp(-bounceT * 5) * Math.abs(Math.sin(bounceT * Math.PI * 3.5));
+                        }
+                        
+                        pL.tx = currentPos; pL.ty = currentPos;
+                        pR.tx = currentPos; pR.ty = currentPos;
+                        
+                        scaleL = scaleR = 1.0;
+                        // 提高跟随速度，防止 lerp 抹平硬碰撞的瞬间折线
+                        speedL = speedR = 0.95; 
+                        noiseAmp = 0; 
+                    } else {
+                        // 回弹结束后直接平滑归位到中心
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.1; // 平滑缓慢地归位
+                        noiseAmp = 0;
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.4); // 快速响应缩放
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.4);
+                    break;
+
+            }
+
+            // Head update
+            head.x = lerp(head.x, head.tx, headSpeed);
+            head.y = lerp(head.y, head.ty, headSpeed);
+            headContainer.style.transform = `translate(${head.x}px, ${head.y}px)`;
+
+            // Pupils update
+            pL.x = lerp(pL.x, pL.tx + getNoise(noiseAmp), speedL);
+            pL.y = lerp(pL.y, pL.ty + getNoise(noiseAmp), speedL);
+            pR.x = lerp(pR.x, pR.tx + getNoise(noiseAmp), speedR);
+            pR.y = lerp(pR.y, pR.ty + getNoise(noiseAmp), speedR);
+
+            // Circular constraint
+            function constrain(p) {
+                let limit = (internalMode === 205) ? 15 : 33;
+                let dist = Math.sqrt(p.x*p.x + p.y*p.y);
+                if (dist > limit) {
+                    p.x = (p.x / dist) * limit;
+                    p.y = (p.y / dist) * limit;
+                }
+            }
+            constrain(pL); constrain(pR);
+
+            pupilL.style.transform = `translate(${pL.x}px, ${pL.y}px) scale(${pL.scale || 1}) rotate(${pL.rot || 0}deg)`;
+            pupilR.style.transform = `translate(${pR.x}px, ${pR.y}px) scale(${pR.scale || 1}) rotate(${pR.rot || 0}deg)`;
+
+            // 联动眼白位移 (视差效果)
+            let parallaxRatio = 0.22;
+            let scleraX_L = pL.x * parallaxRatio;
+            let scleraY_L = pL.y * parallaxRatio;
+            let scleraX_R = pR.x * parallaxRatio;
+            let scleraY_R = pR.y * parallaxRatio;
+            
+            pupilL.closest('.eye').style.setProperty('--sclera-x', `${scleraX_L}px`);
+            pupilL.closest('.eye').style.setProperty('--sclera-y', `${scleraY_L}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-x', `${scleraX_R}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-y', `${scleraY_R}px`);
+            
+            pupilL.parentElement.style.setProperty('--sclera-x', `${scleraX_L}px`);
+            pupilL.parentElement.style.setProperty('--sclera-y', `${scleraY_L}px`);
+            pupilR.parentElement.style.setProperty('--sclera-x', `${scleraX_R}px`);
+            pupilR.parentElement.style.setProperty('--sclera-y', `${scleraY_R}px`);
+        }
+
+        let lastTime = performance.now();
+        function loop(now) {
+            let dt = now - lastTime;
+            lastTime = now;
+            updateLogic(dt);
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

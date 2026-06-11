@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:;base64,iVBORw0KGgo=">
-    <title>Emoji Animations</title>
+    <title>Music</title>
     <style>
         /* Base styles */
         body { margin: 0; height: 100vh; background-color: #050505; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
@@ -212,7 +212,7 @@
             75% { transform: translate(-1px, -1px); }
             100% { transform: translate(0.5px, 0.5px); }
         }
-        .shimmer-light { position: absolute; top: 0; left: 0; width: 100%; height: 100%; mask-image: url('Heart.png'); -webkit-mask-image: url('Heart.png'); mask-size: contain; -webkit-mask-size: contain; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat; background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.8) 50%, transparent 80%); background-size: 200% 200%; animation: light-sweep 3.5s infinite ease-in-out; mix-blend-mode: overlay; pointer-events: none; }
+        .shimmer-light { position: absolute; top: 0; left: 0; width: 100%; height: 100%; mask-image: url('assets/Heart.png'); -webkit-mask-image: url('assets/Heart.png'); mask-size: contain; -webkit-mask-size: contain; mask-repeat: no-repeat; -webkit-mask-repeat: no-repeat; background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.8) 50%, transparent 80%); background-size: 200% 200%; animation: light-sweep 3.5s infinite ease-in-out; mix-blend-mode: overlay; pointer-events: none; }
         @keyframes light-sweep {
             0%, 25% { background-position: 200% 0; }
             45%, 100% { background-position: -100% 100%; } 
@@ -447,71 +447,71 @@
 </head>
 <body>
     <div class="tabs">
-        <button class="tab active" onclick="switchTab('original', event)">1. 经典 Original</button>
-        <button class="tab" onclick="switchTab('spin', event)">2. 螺旋 Spin</button>
-        <button class="tab" onclick="switchTab('ghost', event)">3. 拖尾 Ghost</button>
-        <button class="tab" onclick="switchTab('shimmer', event)">4. 震动 Shimmer</button>
-        <button class="tab" onclick="switchTab('jelly', event)">5. 弹簧 Jelly</button>
-        <button class="tab" onclick="switchTab('liquid', event)">6. 溶解 Liquid</button>
-        <button class="tab" onclick="switchTab('heartbeat', event)">7. 脉冲 Heartbeat</button>
-        <button class="tab" onclick="switchTab('rotate', event)">8. 旋转 Rotate</button>
-        <button class="tab" onclick="switchTab('swing', event)">9. 摇摆 Swing</button>
-        <button class="tab" onclick="switchTab('bounce', event)">10. 跳动 Bounce</button>
+        <button class="tab active" onclick="switchTab('301', event)">1. 经典 Original</button>
+        <button class="tab" onclick="switchTab('302', event)">2. 螺旋 Spin</button>
+        <button class="tab" onclick="switchTab('303', event)">3. 拖尾 Ghost</button>
+        <button class="tab" onclick="switchTab('304', event)">4. 震动 Shimmer</button>
+        <button class="tab" onclick="switchTab('305', event)">5. 弹簧 Jelly</button>
+        <button class="tab" onclick="switchTab('306', event)">6. 溶解 Liquid</button>
+        <button class="tab" onclick="switchTab('307', event)">7. 脉冲 Heartbeat</button>
+        <button class="tab" onclick="switchTab('308', event)">8. 旋转 Rotate</button>
+        <button class="tab" onclick="switchTab('309', event)">9. 摇摆 Swing</button>
+        <button class="tab" onclick="switchTab('310', event)">10. 跳动 Bounce</button>
     </div>
 
     <!-- 1. 经典初版 -->
-    <div id="original" class="scene active">
+    <div id="m301" class="scene active">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="original-emoji" src="Heart.png" alt="heart">
+            <img class="original-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="original-emoji" src="Heart.png" alt="heart">
+            <img class="original-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 2. 弹性螺旋 (Elastic Spin) -->
-    <div id="spin" class="scene">
+    <div id="m302" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="spin-emoji" src="Heart.png" alt="heart">
+            <img class="spin-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="spin-emoji" src="Heart.png" alt="heart">
+            <img class="spin-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 6. 残影拖尾 (Ghosting Trail) -->
-    <div id="ghost" class="scene">
+    <div id="m303" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="ghost-emoji g3" src="Heart.png" alt="heart">
-            <img class="ghost-emoji g2" src="Heart.png" alt="heart">
-            <img class="ghost-emoji g1" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g3" src="assets/Heart.png" alt="heart">
+            <img class="ghost-emoji g2" src="assets/Heart.png" alt="heart">
+            <img class="ghost-emoji g1" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="ghost-emoji g3" src="Heart.png" alt="heart">
-            <img class="ghost-emoji g2" src="Heart.png" alt="heart">
-            <img class="ghost-emoji g1" src="Heart.png" alt="heart">
+            <img class="ghost-emoji g3" src="assets/Heart.png" alt="heart">
+            <img class="ghost-emoji g2" src="assets/Heart.png" alt="heart">
+            <img class="ghost-emoji g1" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 7. 微震高光 (Micro-vibrations & Gloss Shimmer) -->
-    <div id="shimmer" class="scene">
+    <div id="m304" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
             <div class="shimmer-wrapper">
-                <img class="shimmer-emoji" src="Heart.png" alt="heart">
+                <img class="shimmer-emoji" src="assets/Heart.png" alt="heart">
                 <div class="shimmer-light"></div>
             </div>
         </div>
@@ -519,93 +519,93 @@
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
             <div class="shimmer-wrapper">
-                <img class="shimmer-emoji" src="Heart.png" alt="heart">
+                <img class="shimmer-emoji" src="assets/Heart.png" alt="heart">
                 <div class="shimmer-light"></div>
             </div>
         </div>
     </div>
 
     <!-- 5. 弹簧果冻 (Spring & Jelly Elastic) -->
-    <div id="jelly" class="scene">
+    <div id="m305" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="jelly-emoji" src="Heart.png" alt="heart">
+            <img class="jelly-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="jelly-emoji" src="Heart.png" alt="heart">
+            <img class="jelly-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 10. 液体溶解与凝聚 (Liquid Dissolve & Condense) -->
-    <div id="liquid" class="scene">
+    <div id="m306" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="liquid-emoji" src="Heart.png" alt="heart">
+            <img class="liquid-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="liquid-emoji" src="Heart.png" alt="heart">
+            <img class="liquid-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 11. 心脏脉冲收缩 (Heartbeat Pulse) -->
-    <div id="heartbeat" class="scene">
+    <div id="m307" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="heartbeat-emoji" src="Heart.png" alt="heart">
+            <img class="heartbeat-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="heartbeat-emoji" src="Heart.png" alt="heart">
+            <img class="heartbeat-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 12. 匀速旋转 (Continuous Rotate) -->
-    <div id="rotate" class="scene">
+    <div id="m308" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="rotate-emoji" src="Heart.png" alt="heart">
+            <img class="rotate-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="rotate-emoji" src="Heart.png" alt="heart">
+            <img class="rotate-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 13. 欢快摇摆 (Happy Swing) -->
-    <div id="swing" class="scene">
+    <div id="m309" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="swing-emoji" src="Heart.png" alt="heart">
+            <img class="swing-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="swing-emoji" src="Heart.png" alt="heart">
+            <img class="swing-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
     <!-- 12. 活力跳动 (Energetic Bounce) -->
-    <div id="bounce" class="scene">
+    <div id="m310" class="scene">
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="bounce-emoji" src="Heart.png" alt="heart">
+            <img class="bounce-emoji" src="assets/Heart.png" alt="heart">
         </div>
         <div class="eye">
             <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
             <div class="pupil-seamless"></div>
-            <img class="bounce-emoji" src="Heart.png" alt="heart">
+            <img class="bounce-emoji" src="assets/Heart.png" alt="heart">
         </div>
     </div>
 
@@ -613,7 +613,8 @@
         let animationStartTime = Date.now();
         let lastBlinkLoop = -1;
 
-        function switchTab(sceneId, event) {
+        function switchTab(sceneId, event) { 
+            sceneId = "m" + sceneId;
             document.querySelectorAll('.scene').forEach(el => {
                 el.classList.remove('active');
                 el.style.display = '';
@@ -637,13 +638,10 @@
             const activeScene = document.querySelector('.scene.active');
             if (!activeScene) return;
             activeScene.querySelectorAll('.eye').forEach(eye => {
+                eye.style.setProperty('--blink-dur', (duration/1000) + 's');
                 eye.classList.remove('is-blinking');
                 void eye.offsetWidth; 
-                eye.style.setProperty('--blink-dur', (duration/1000) + 's');
                 eye.classList.add('is-blinking');
-                setTimeout(() => {
-                    eye.classList.remove('is-blinking');
-                }, duration + 50); 
             });
         }
 

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hear</title>
+    <style>
+        /* Base styles */
+        body { margin: 0; height: 100vh; background-color: #050505; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; color: white; }
+        .tabs { position: fixed; top: 0; right: 0; bottom: 0; width: 220px; display: flex; flex-direction: column; gap: 8px; background: rgba(255, 255, 255, 0.05); padding: 20px; overflow-y: auto; backdrop-filter: blur(10px); z-index: 100; border-left: 1px solid rgba(255,255,255,0.1); scrollbar-width: none; -ms-overflow-style: none; }
+        .tabs::-webkit-scrollbar { display: none; }
+        .tab { background: transparent; border: 1px solid rgba(255, 255, 255, 0.3); color: white; padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: all 0.3s; font-weight: 500; outline: none; font-size: 13px; text-align: left; }
+        .tab.active, .tab:hover { background: white; color: black; box-shadow: 0 0 15px rgba(255,255,255,0.5); }
+        
+        .scene { width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; position: relative; padding-right: 260px; box-sizing: border-box; }
+        
+        .eye-container { display: flex; gap: 60px; position: relative; }
+
+        /* 1. 物理 TFT 屏幕 (硬件边框约束) */
+        .eye { 
+            width: 160px; height: 160px; 
+            background-color: transparent; 
+            border-radius: 50%; 
+            position: relative; 
+            overflow: hidden; 
+        }
+        
+        /* 瞬目反射 (眼睑) */
+        .eyelid-top, .eyelid-bottom {
+            position: absolute;
+            left: 0;
+            width: 100%;
+            background-color: #080808; 
+            z-index: 10; 
+        }
+        .eyelid-top {
+            top: 0;
+            height: 85%;
+            border-bottom-left-radius: 50% 8%;
+            border-bottom-right-radius: 50% 8%;
+            transform: translateY(-100%);
+        }
+        .eyelid-bottom {
+            bottom: 0;
+            height: 25%;
+            border-top-left-radius: 50% 10%;
+            border-top-right-radius: 50% 10%;
+            transform: translateY(100%);
+        }
+
+        .eye.is-blinking .eyelid-top { animation: blink-top var(--blink-dur, 0.3s) forwards; }
+        .eye.is-blinking .eyelid-bottom { animation: blink-bottom var(--blink-dur, 0.3s) forwards; }
+
+        /* 左眼和右眼添加微小的神经延迟 */
+        .eye:nth-child(2).is-blinking .eyelid-top, 
+        .eye:nth-child(2).is-blinking .eyelid-bottom {
+            animation-delay: 0.04s;
+        }
+
+        @keyframes blink-top {
+            0% { transform: translateY(-100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); } 
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); } 
+            100% { transform: translateY(-100%); }
+        }
+        @keyframes blink-bottom {
+            0% { transform: translateY(100%); animation-timing-function: cubic-bezier(0.8, 0, 1, 1); }
+            35%, 40% { transform: translateY(0%); animation-timing-function: cubic-bezier(0.1, 0.8, 0.3, 1); }
+            100% { transform: translateY(100%); }
+        }
+
+        /* 使用专门的裁剪容器作为真实的眼白图层，避免抗锯齿白边透出 */
+        .sclera-clip {
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            background-color: #f4f4f4;
+            border-radius: 50%;
+            overflow: hidden;
+            z-index: 1;
+            /* 修复 Webkit 渲染下的裁剪白边问题 */
+            -webkit-mask-image: -webkit-radial-gradient(white, black);
+            /* 跟随眼白图层一起做视差位移，保证裁剪区域与视觉上的眼白完全重合 */
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 使用 ::after 作为内阴影遮罩层，盖在瞳孔上方，增强 3D 立体感并遮挡边缘 */
+        .eye::after {
+            content: '';
+            position: absolute;
+            top: 8px; left: 8px; right: 8px; bottom: 8px;
+            border-radius: 50%;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.6);
+            z-index: 3;
+            pointer-events: none;
+            transform: translate(var(--sclera-x, 0px), var(--sclera-y, 0px));
+        }
+
+        /* 眼珠/瞳孔 基础样式 */
+        .pupil {
+            width: 70px; height: 70px;
+            background-color: transparent;
+            border-radius: 50%;
+            position: absolute; top: 50%; left: 50%;
+            margin-left: -35px; margin-top: -35px;
+            z-index: 2;
+        }
+        
+        /* 使用伪元素作为眼珠背景，利用 transform 缩放避免 Layout 重排卡顿 */
+        .pupil::before {
+            content: '';
+            position: absolute;
+            top: 50%; left: 50%;
+            width: 70px; height: 70px;
+            background-color: #000;
+            border-radius: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px))) scaleX(var(--bg-scale-x, 1)) scaleY(var(--bg-scale-y, 1));
+            z-index: -1;
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .pupil.no-transition::before {
+            transition: none;
+        }
+
+        /* --- 特殊形变类 (Shape Classes) --- */
+        
+        /* 1. 星星眼 (Sphere 风格：巨大椭圆 + 内部星光) */
+        .pupil.shape-star {
+        }
+
+        /* 星星高光容器 (仅在星星眼模式下显示) */
+        .star-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-star .star-highlights {
+            display: block;
+        }
+
+        /* 泪光容器 (仅在眼泪汪汪模式下显示) */
+        .tear-highlights {
+            display: none;
+            width: 110px; height: 110px;
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(calc(-50% + var(--bg-offset-x, 0px)), calc(-50% + var(--bg-offset-y, 0px)));
+            pointer-events: none;
+        }
+        .pupil.shape-teary .tear-highlights {
+            display: block;
+        }
+
+        /* 眼泪汪汪的各种高光形状 */
+        .tear-shine {
+            position: absolute;
+            background-color: white;
+            border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%;
+            transform-origin: center center;
+            opacity: 1; 
+            animation: tear-morph 3s ease-in-out infinite;
+        }
+
+        @keyframes tear-morph {
+            0%   { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+            25%  { border-radius: 54% 46% 53% 47% / 46% 54% 48% 52%; }
+            50%  { border-radius: 46% 54% 45% 55% / 55% 45% 56% 44%; }
+            75%  { border-radius: 51% 49% 55% 45% / 49% 51% 45% 55%; }
+            100% { border-radius: 48% 52% 47% 53% / 52% 48% 53% 47%; }
+        }
+
+        /* 泪光 - 主高光 (左侧偏上的大水滴) */
+        .tear-main {
+            width: 56px; height: 56px; 
+            top: 10%; left: 15%; 
+            transform: scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.2s;
+        }
+
+        /* 泪光 - 次高光1 */
+        .tear-sub1 {
+            width: 32px; height: 32px; 
+            bottom: 4.5%; right: 36%; 
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-y, 1)) scaleY(var(--tear-scale-x, 1));
+            animation-duration: 2.7s;
+        }
+
+        /* 泪光 - 次高光2 */
+        .tear-sub2 {
+            width: 28px; height: 28px; 
+            bottom: 34%; right: 6.5%; 
+            transform: translate(var(--slide-x, 0px), var(--slide-y, 0px)) scaleX(var(--tear-scale-x, 1)) scaleY(var(--tear-scale-y, 1));
+            animation-duration: 3.5s;
+        }
+
+        /* 模式说明浮层 */
+        .desc-overlay {
+            position: fixed; top: 40px; left: calc(50% - 130px); transform: translateX(-50%);
+            text-align: center; max-width: 800px; width: 90%;
+            background: rgba(0,0,0,0.4); padding: 20px 30px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: none; z-index: 50;
+        }
+        .desc-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; color: #fff; letter-spacing: 1px; }
+        .desc-text { font-size: 15px; color: #ddd; line-height: 1.6; }
+        .desc-emotion { display: none; }
+    </style>
+</head>
+<body>
+    <div class="desc-overlay">
+        <div class="desc-title" id="mode-title">1. 扫视机制 (Saccades)</div>
+        <div class="desc-text" id="mode-desc">瞬间的位移爆发，速度极快（弹道式），没有中间缓冲，干脆利落。</div>
+        <div class="desc-emotion" id="mode-emotion">情绪外显：机警、神经质、突然发现新大陆、鬼鬼祟祟。</div>
+    </div>
+
+    <div class="scene">
+        <div class="eye-container" id="head-container">
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="pupil" id="pupil-l">
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="eye">
+                <div class="eyelid-top"></div><div class="eyelid-bottom"></div>
+                <div class="sclera-clip">
+                    <div class="pupil" id="pupil-r">
+                        <div class="tear-highlights">
+                            <div class="tear-shine tear-main"></div>
+                            <div class="tear-shine tear-sub1"></div>
+                            <div class="tear-shine tear-sub2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <div class="tab-group-title">语音交互 (Hear)</div>
+        <button class="tab active" onclick="setMode(501, event)">1. 唤醒 (Wake up)</button>
+        <button class="tab" onclick="setMode(502, event)">2. 聆听 (Listening)</button>
+        <button class="tab" onclick="setMode(503, event)">3. 收到 (Received)</button>
+        <button class="tab" onclick="setMode(504, event)">4. 疑惑 (Confused)</button>
+    </div>
+
+    <script>
+        // 定义 T0, T1, T2 层级的表情 ID
+                        
+        const modes = {
+            501: { t: "1. 唤醒 (Wake up)", d: "听到唤醒词时，眼睛瞬间睁大，瞳孔微微放大并伴随轻微的弹跳，表示注意力集中。", e: "机敏、期待" },
+            502: { t: "2. 聆听 (Listening)", d: "眼珠快速瞟向右上角，贴着眼眶边缘缓慢滚向左侧，最后灵光一闪瞬间回中。", e: "思考、处理中" },
+            503: { t: "3. 收到 (Received)", d: "正确识别指令，眼睛变成圆形，快速下砸后向右上角弹起，画出一个干净利落的对勾（√）轨迹。", e: "开心、肯定" },
+            504: { t: "4. 疑惑 (Confused)", d: "未识别指令，双眼反向打转（左眼逆时针，右眼顺时针），表现出晕眩、疑惑和不解的可爱神态。", e: "晕眩、不解" }
+        };
+
+        // State variables
+        let currentMode = 501;
+        let internalMode = 501; // 实机模式下，实际正在播放的模式
+        let time = 0;
+        let mouseX = 0, mouseY = 0;
+        
+        // Physical states
+        let pL = { x: 0, y: 0, tx: 0, ty: 0 };
+        let pR = { x: 0, y: 0, tx: 0, ty: 0 };
+        let head = { x: 0, y: 0, tx: 0, ty: 0 };
+        let lastSaccadeTime = 0;
+        let flutterEndTime = 0;
+        let pursuit = { x: 0, y: 0, tx: 0, ty: 0, nextTime: 0 };
+        let modeStartTime = 0;
+        let lastBlinkLoop = -1;
+
+        const titleEl = document.getElementById('mode-title');
+        const descEl = document.getElementById('mode-desc');
+        const emotionEl = document.getElementById('mode-emotion');
+        const pupilL = document.getElementById('pupil-l');
+        const pupilR = document.getElementById('pupil-r');
+        const headContainer = document.getElementById('head-container');
+
+        const tearHlL = pupilL.querySelector('.tear-highlights');
+        const tearHlR = pupilR.querySelector('.tear-highlights');
+        const lTearMain = pupilL.querySelector('.tear-main');
+        const lTearSub1 = pupilL.querySelector('.tear-sub1');
+        const lTearSub2 = pupilL.querySelector('.tear-sub2');
+        const rTearMain = pupilR.querySelector('.tear-main');
+        const rTearSub1 = pupilR.querySelector('.tear-sub1');
+        const rTearSub2 = pupilR.querySelector('.tear-sub2');
+
+        function setMode(m, e) {
+            currentMode = m;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            if(e) e.currentTarget.classList.add('active');
+            
+            titleEl.innerText = modes[m].t;
+            descEl.innerText = modes[m].d;
+            emotionEl.innerText = modes[m].e;
+
+            internalMode = m;
+            applyInternalMode(internalMode);
+        }
+
+        function applyInternalMode(m) {
+            pupilL.className = 'pupil ' + (modes[m].shape || '');
+            pupilR.className = 'pupil ' + (modes[m].shape || '');
+
+            if (m === 32 || m === 122) {
+                pupilL.classList.add('no-transition');
+                pupilR.classList.add('no-transition');
+            } else {
+                pupilL.classList.remove('no-transition');
+                pupilR.classList.remove('no-transition');
+                pupilL.style.setProperty('--bg-scale-x', 1);
+                pupilL.style.setProperty('--bg-scale-y', 1);
+                pupilL.style.setProperty('--bg-offset-x', '0px');
+                pupilL.style.setProperty('--bg-offset-y', '0px');
+                pupilR.style.setProperty('--bg-scale-x', 1);
+                pupilR.style.setProperty('--bg-scale-y', 1);
+                pupilR.style.setProperty('--bg-offset-x', '0px');
+                pupilR.style.setProperty('--bg-offset-y', '0px');
+            }
+
+            pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+            pL.rot = 0; pR.rot = 0;
+            pL.vx = undefined; pL.vy = undefined; pR.vx = undefined; pR.vy = undefined;
+            head.tx = 0; head.ty = 0;
+            pL.scale = 1; pR.scale = 1;
+            lastSaccadeTime = time;
+            modeStartTime = time;
+            lastBlinkLoop = -1;
+        }
+
+        function getLoopDur(m) {
+            if (m === 501) return 1500;
+            if (m === 502) return 5500;
+            if (m === 503) return 3000;
+            if (m === 504) return 2600; // 缩短疑惑表情的整体循环时间
+            return 4000;
+        }
+
+        function lerp(start, end, amt) { return (1 - amt) * start + amt * end; }
+        function getNoise(amp) { return (Math.random() + Math.random() + Math.random() - 1.5) * amp; }
+
+        function triggerBlink(dur) {
+            const eyes = document.querySelectorAll('.eye');
+            eyes.forEach(eye => {
+                eye.style.setProperty('--blink-dur', `${dur}ms`);
+                eye.classList.remove('is-blinking');
+                void eye.offsetWidth; // 触发重排，确保动画重新执行
+                eye.classList.add('is-blinking');
+            });
+        }
+
+        function updateLogic(dt) {
+            time += dt;
+
+            if (internalMode === null) return; // Wait for selection
+
+            let speedL = 0.15, speedR = 0.15; 
+            let noiseAmp = 0;
+            let headSpeed = 0.1;
+            let scaleL = 1, scaleR = 1;
+
+            // 统一定义循环周期
+            let loopDur = getLoopDur(internalMode);
+            let localTime = time - modeStartTime;
+            let t = localTime % loopDur;
+            let currentLoopCount = Math.floor(localTime / loopDur);
+            
+            // 统一控制眨眼，保证首尾帧绝对没有眨眼形变
+            if (currentLoopCount !== lastBlinkLoop && t > loopDur / 2) {
+                if (Math.random() < 0.3) {
+                    if (internalMode !== 502) { // 聆听时不眨眼
+                        triggerBlink(300);
+                    }
+                }
+                lastBlinkLoop = currentLoopCount;
+            }
+
+            switch(internalMode) {
+                case 501: // Wake up (唤醒)
+                    if (t < 250) {
+                        // 向上跳起，并略微放大
+                        pL.tx = 0; pL.ty = -18; pR.tx = 0; pR.ty = -18;
+                        scaleL = scaleR = 1.05;
+                        speedL = speedR = 0.25;
+                    } else if (t < 500) {
+                        // 落下缓冲 (稍微挤压并复原大小)
+                        pL.tx = 0; pL.ty = 6; pR.tx = 0; pR.ty = 6;
+                        scaleL = scaleR = 0.98;
+                        speedL = speedR = 0.2;
+                    } else {
+                        // 恢复并保持完美居中 (首尾帧居中)
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1.0;
+                        speedL = speedR = 0.15;
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.25);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.25);
+                    break;
+
+                case 502: // Listening / Thinking (聆听/原思考)
+                    if (t < 400) {
+                        // 1. 瞬间看向右上角
+                        pL.tx = 20; pL.ty = -20; pR.tx = 20; pR.ty = -20;
+                        speedL = speedR = 0.3;
+                    } else if (t < 1800) {
+                        // 2. 右上角转圈摇摆
+                        pL.tx = 20 + Math.sin(time/140)*8; pL.ty = -20 + Math.cos(time/140)*8;
+                        pR.tx = 20 + Math.sin(time/140)*8; pR.ty = -20 + Math.cos(time/140)*8;
+                        speedL = speedR = 0.15;
+                    } else if (t < 2200) {
+                        // 3. 沿边缘滚动到左上角
+                        let rollProgress = (t - 1800) / 400; 
+                        let angle = lerp(-Math.PI/4, -Math.PI*3/4, rollProgress); 
+                        pL.tx = Math.cos(angle) * 28; pL.ty = Math.sin(angle) * 28;
+                        pR.tx = Math.cos(angle) * 28; pR.ty = Math.sin(angle) * 28;
+                        speedL = speedR = 0.3; 
+                    } else if (t < 2500) {
+                        // 4. 新增：到达左上角后停稳缓冲
+                        pL.tx = -20; pL.ty = -20; pR.tx = -20; pR.ty = -20;
+                        speedL = speedR = 0.15;
+                    } else if (t < 3900) {
+                        // 5. 左上角转圈摇摆 (重新计算相位，持续 1400ms 与右上角保持一致)
+                        let tOffset = time - 2500; 
+                        pL.tx = -20 + Math.sin(tOffset/140)*8; pL.ty = -20 + Math.cos(tOffset/140)*8;
+                        pR.tx = -20 + Math.sin(tOffset/140)*8; pR.ty = -20 + Math.cos(tOffset/140)*8;
+                        speedL = speedR = 0.15;
+                    } else if (t < 4200) {
+                        // 6. 新增：左上角摇摆完毕后，再次停稳缓冲
+                        pL.tx = -20; pL.ty = -20; pR.tx = -20; pR.ty = -20;
+                        speedL = speedR = 0.15;
+                    } else {
+                        // 7. 瞬间灵光一闪回中 (停留等待进入下一次循环去右上角)
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1.1; 
+                        speedL = speedR = 0.06; 
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.2);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.2);
+                    break;
+
+                case 503: // Received (收到)
+                    if (t < 150) {
+                        // 1. √ 的起点：向左下轻微蓄力/下压
+                        pL.tx = -12; pL.ty = 8; pR.tx = -12; pR.ty = 8;
+                        speedL = speedR = 0.25;
+                        scaleL = scaleR = 0.9;
+                    } else if (t < 300) {
+                        // 2. √ 的底部转折点：快速下砸到最低点
+                        pL.tx = 4; pL.ty = 28; pR.tx = 4; pR.ty = 28;
+                        speedL = speedR = 0.35;
+                        scaleL = scaleR = 0.85; 
+                    } else if (t < 800) {
+                        // 3. √ 的长边上扬：冲向右上角，并在右上角产生果冻过冲
+                        let burstTime = t - 300;
+                        let cycleT = burstTime / 500;
+                        
+                        let spring = Math.exp(-cycleT * 6) * Math.cos(cycleT * Math.PI * 5);
+                        
+                        // 起点 (4, 28)，过冲极值更远，最终停驻在 (18, -12) 离边缘远一点
+                        pL.tx = 18 - 14 * spring;
+                        pL.ty = -12 + 40 * spring;
+                        pR.tx = pL.tx; pR.ty = pL.ty;
+                        
+                        speedL = speedR = 0.45;
+                        scaleL = scaleR = 1.0 - 0.15 * spring;
+                    } else if (t < 1000) {
+                        // 4. 短暂停留，让大脑视觉残留捕捉到完整的 √ 形状，停驻点离眼眶留出空间
+                        pL.tx = 18; pL.ty = -12; pR.tx = 18; pR.ty = -12;
+                        speedL = speedR = 0.2;
+                        scaleL = scaleR = 1.0;
+                    } else if (t < 1600) {
+                        // 5. 独立的中心回弹：从右上角停驻点直线果冻弹回中心 (0,0)
+                        let burstTime = t - 1000;
+                        let cycleT = burstTime / 600;
+                        
+                        let spring = Math.exp(-cycleT * 5) * Math.cos(cycleT * Math.PI * 5);
+                        
+                        pL.tx = 18 * spring;
+                        pL.ty = -12 * spring;
+                        pR.tx = 18 * spring;
+                        pR.ty = -12 * spring;
+                        
+                        speedL = speedR = 0.45;
+                        scaleL = scaleR = 1.0 + 0.15 * spring;
+                    } else {
+                        // 6. 保持首尾帧绝对居中，等待下一次循环
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                        scaleL = scaleR = 1.0;
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.25);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.25);
+                    break;
+
+                case 504: // Confused (疑惑)
+                    if (t < 2000) {
+                        // 1. 晕眩转圈：直接从中心原地开始打转（引入螺旋甩出效果）
+                        let spinT = t;
+                        
+                        // 左眼：每 800ms 转一圈，转 2.5 圈（2000ms）
+                        let angleL = -Math.PI / 2 - (spinT / 800) * Math.PI * 2; 
+                        
+                        // 右眼：每 1000ms 转一圈，转 2 圈（2000ms），错开 180 度
+                        let angleR = Math.PI / 2 + (spinT / 1000) * Math.PI * 2;
+                        
+                        // 前 400ms 半径从 0 放大到 28
+                        let radius = Math.min(28, (spinT / 400) * 28);
+                        
+                        pL.tx = Math.cos(angleL) * radius; pL.ty = Math.sin(angleL) * radius;
+                        pR.tx = Math.cos(angleR) * radius; pR.ty = Math.sin(angleR) * radius;
+                        
+                        scaleL = scaleR = 1.0;
+                        speedL = speedR = 0.4;
+                    } else {
+                        // 2. 甩头恢复清醒，首尾帧居中
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        scaleL = scaleR = 1.0;
+                        speedL = speedR = 0.2; // 稍微调快一点归位速度
+                    }
+                    pL.scale = lerp(pL.scale || 1, scaleL, 0.25);
+                    pR.scale = lerp(pR.scale || 1, scaleR, 0.25);
+                    break;
+            }
+
+            // ==== Base Pupil Physics ====
+            
+            // Constrain physics within bounds (circle radius ~45px 允许更大范围转动)
+            function constrain(p) {
+                let dist = Math.sqrt(p.x*p.x + p.y*p.y);
+                if (dist > 45) {
+                    let nx = p.x / dist;
+                    let ny = p.y / dist;
+                    p.x = nx * 45;
+                    p.y = ny * 45;
+                }
+            }
+
+            // Head physics
+            head.x = lerp(head.x, head.tx, headSpeed);
+            head.y = lerp(head.y, head.ty, headSpeed);
+            headContainer.style.transform = `translate(${head.x}px, ${head.y}px)`;
+
+            // Saccade simulation
+            let sway = Math.sin(time / 1000) * 1.5;
+            let saccadeX = 0, saccadeY = 0;
+            if (time - lastSaccadeTime > 500 && Math.random() < 0.05) {
+                saccadeX = (Math.random() - 0.5) * 3;
+                saccadeY = (Math.random() - 0.5) * 3;
+                lastSaccadeTime = time;
+            }
+
+            pL.x = lerp(pL.x, pL.tx + sway + saccadeX + getNoise(noiseAmp), speedL);
+            pL.y = lerp(pL.y, pL.ty + saccadeY + getNoise(noiseAmp), speedL);
+            pR.x = lerp(pR.x, pR.tx + sway + saccadeX + getNoise(noiseAmp), speedR);
+            pR.y = lerp(pR.y, pR.ty + saccadeY + getNoise(noiseAmp), speedR);
+
+            constrain(pL);
+            constrain(pR);
+
+            // Apply transforms
+            pupilL.style.transform = `translate(${pL.x}px, ${pL.y}px) scale(${pL.scale || 1}) rotate(${pL.rot || 0}deg)`;
+            pupilR.style.transform = `translate(${pR.x}px, ${pR.y}px) scale(${pR.scale || 1}) rotate(${pR.rot || 0}deg)`;
+
+            // Parallax effect for sclera (眼白)
+            let parallaxRatio = 0.4; // 增大视差比例，使眼白移动幅度更大
+            let scleraX_L = pL.x * parallaxRatio;
+            let scleraY_L = pL.y * parallaxRatio;
+            let scleraX_R = pR.x * parallaxRatio;
+            let scleraY_R = pR.y * parallaxRatio;
+            
+            // 限制眼白的移动范围，防止超出眼眶边缘 (眼白位移最大值约束)
+            let maxScleraOffset = 8; // 眼眶的内边距是 8px
+            
+            function constrainSclera(sx, sy) {
+                let dist = Math.sqrt(sx*sx + sy*sy);
+                if (dist > maxScleraOffset) {
+                    return { x: (sx/dist)*maxScleraOffset, y: (sy/dist)*maxScleraOffset };
+                }
+                return { x: sx, y: sy };
+            }
+
+            let sL = constrainSclera(scleraX_L, scleraY_L);
+            let sR = constrainSclera(scleraX_R, scleraY_R);
+
+            pupilL.closest('.eye').style.setProperty('--sclera-x', `${sL.x}px`);
+            pupilL.closest('.eye').style.setProperty('--sclera-y', `${sL.y}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-x', `${sR.x}px`);
+            pupilR.closest('.eye').style.setProperty('--sclera-y', `${sR.y}px`);
+            
+            // 确保使用查询到的真实 DOM 元素进行样式设置
+            pupilL.parentElement.style.setProperty('--sclera-x', `${sL.x}px`);
+            pupilL.parentElement.style.setProperty('--sclera-y', `${sL.y}px`);
+            pupilR.parentElement.style.setProperty('--sclera-x', `${sR.x}px`);
+            pupilR.parentElement.style.setProperty('--sclera-y', `${sR.y}px`);
+        }
+
+        let lastTime = performance.now();
+        function loop(now) {
+            let dt = now - lastTime;
+            lastTime = now;
+            updateLogic(dt);
+            requestAnimationFrame(loop);
+        }
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>
