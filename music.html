@@ -443,9 +443,25 @@
             80% { transform: scale(1.08); }  /* 旋转末期再次放大 */
             88%, 100% { transform: scale(0.98); }
         }
+
+        /* 模式说明浮层 */
+        .desc-overlay {
+            position: fixed; top: 40px; left: calc(50% - 130px); transform: translateX(-50%);
+            text-align: center; max-width: 800px; width: 90%;
+            background: rgba(0,0,0,0.4); padding: 20px 30px; border-radius: 15px;
+            backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,0.1);
+            pointer-events: none; z-index: 50;
+        }
+        .desc-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; color: #fff; letter-spacing: 1px; }
+        .desc-text { font-size: 15px; color: #ddd; line-height: 1.6; }
     </style>
 </head>
 <body>
+    <div class="desc-overlay">
+        <div class="desc-title" id="mode-title">1. 经典 (Original)</div>
+        <div class="desc-text" id="mode-desc">跟随音乐节奏的经典挤压与拉伸，基础的动感律动。</div>
+    </div>
+
     <div class="tabs">
         <button class="tab active" onclick="switchTab('301', event)">1. 经典 Original</button>
         <button class="tab" onclick="switchTab('302', event)">2. 螺旋 Spin</button>
@@ -610,11 +626,29 @@
     </div>
 
     <script>
+        const modes = {
+            '301': { t: "1. 经典 (Original)", d: "跟随音乐节奏的经典挤压与拉伸，基础的动感律动。" },
+            '302': { t: "2. 螺旋 (Spin)", d: "充满弹性的旋转出现，随着节拍产生螺旋形变。" },
+            '303': { t: "3. 拖尾 (Ghost)", d: "高速的扫视运动，在眼底留下残影，充满赛博朋克感。" },
+            '304': { t: "4. 震动 (Shimmer)", d: "高频微震，光效如同呼吸般扫过表面，充满张力。" },
+            '305': { t: "5. 弹簧 (Jelly)", d: "如果冻般柔软的物理拉伸，Q弹可爱的生命力。" },
+            '306': { t: "6. 溶解 (Liquid)", d: "如水滴般溶解再凝聚，柔和且充满流体质感。" },
+            '307': { t: "7. 脉冲 (Heartbeat)", d: "如同心脏般有力的两次连续跳动泵血，强劲有力。" },
+            '308': { t: "8. 旋转 (Rotate)", d: "伴随着呼吸感的匀速旋转，轻盈且迷幻。" },
+            '309': { t: "9. 摇摆 (Swing)", d: "眼白随重心左右大幅度摇摆位移，充满欢快的节拍感。" },
+            '310': { t: "10. 跳动 (Bounce)", d: "充满活力的多角度下砸与弹起，动感十足。" }
+        };
+
         let animationStartTime = Date.now();
         let lastBlinkLoop = -1;
 
         function switchTab(sceneId, event) { 
+            const mId = sceneId;
             sceneId = "m" + sceneId;
+            
+            document.getElementById('mode-title').innerText = modes[mId].t;
+            document.getElementById('mode-desc').innerText = modes[mId].d;
+
             document.querySelectorAll('.scene').forEach(el => {
                 el.classList.remove('active');
                 el.style.display = '';

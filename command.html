@@ -257,14 +257,12 @@
         }
         .desc-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; color: #fff; letter-spacing: 1px; }
         .desc-text { font-size: 15px; color: #ddd; line-height: 1.6; }
-        .desc-emotion { margin-top: 10px; font-size: 14px; color: #aaa; font-style: italic; }
     </style>
 </head>
 <body>
     <div class="desc-overlay">
         <div class="desc-title" id="mode-title">1. 开机 (Power On)</div>
         <div class="desc-text" id="mode-desc">从闭眼休眠状态瞬间睁开，瞳孔缩放，左右自检扫视。</div>
-        <div class="desc-emotion" id="mode-emotion">情绪外显：清醒、准备就绪</div>
     </div>
 
     <div class="scene">
@@ -321,22 +319,24 @@
         <button class="tab" style="border-color: #e11d48;" onclick="setMode(410, event)">10. WiFi断开 (WiFi Disconnect)</button>
         <button class="tab" style="margin-top:10px; border-color: #f59e0b;" onclick="setMode(411, event)">11. 音量增加 (Vol Up)</button>
         <button class="tab" style="border-color: #f59e0b;" onclick="setMode(412, event)">12. 音量减少 (Vol Down)</button>
+        <button class="tab" style="margin-top:10px; border-color: #6b7280;" onclick="setMode(413, event)">13. 未连接 (Disconnected)</button>
     </div>
 
     <script>
         const modes = {
-            401: { t: "1. 开机 (Power On)", d: "从闭眼休眠状态瞬间睁开，瞳孔缩放，左右自检扫视。", e: "情绪外显：清醒、准备就绪", shape: "shape-circle" },
-            402: { t: "2. 关机 (Power Off)", d: "眼皮缓缓合上，瞳孔失去焦点下沉，进入休眠。", e: "情绪外显：疲惫、休眠", shape: "shape-circle" },
-            403: { t: "3. 暂停 (Pause)", d: "从播放状态突然急刹车，眼球迅速居中，然后开始胡乱高频抖动。", e: "情绪外显：急刹车、卡顿、懵逼", shape: "shape-circle" },
-            404: { t: "4. 播放 (Play)", d: "眼神清亮，随着音乐节拍有节奏地上下律动。", e: "情绪外显：专注、沉浸、律动", shape: "shape-circle" },
-            405: { t: "5. 蓝牙搜索 (BT Search)", d: "蓝牙图标在两眼之间穿梭游走，瞳孔像雷达一样紧紧跟随目标。", e: "情绪外显：专注、追踪、寻找", shape: "shape-circle" },
-            406: { t: "6. 蓝牙成功 (BT Success)", d: "蓝牙连接成功，脉冲确认后爆发成打勾图标。", e: "情绪外显：锁定、共振、确认", shape: "shape-circle" },
-            407: { t: "7. 蓝牙断开 (BT Disconnect)", d: "蓝牙连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", e: "情绪外显：震惊、委屈、失落", shape: "shape-circle" },
-            408: { t: "8. WiFi搜索 (WiFi Search)", d: "WiFi图标在两眼之间穿梭游走，瞳孔紧紧跟随目标。", e: "情绪外显：专注、追踪、寻找", shape: "shape-circle" },
-            409: { t: "9. WiFi成功 (WiFi Success)", d: "WiFi连接成功，脉冲确认后爆发成打勾图标。", e: "情绪外显：锁定、共振、确认", shape: "shape-circle" },
-            410: { t: "10. WiFi断开 (WiFi Disconnect)", d: "WiFi连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", e: "情绪外显：震惊、委屈、失落", shape: "shape-circle" },
-            411: { t: "11. 音量增加 (Vol Up)", d: "眼珠瞥向左边，然后沿着眼白边缘向上运动，示意音量升高。", e: "情绪外显：调高、上升", shape: "shape-circle" },
-            412: { t: "12. 音量减少 (Vol Down)", d: "眼珠瞥向左边，然后沿着眼白边缘向下运动，示意音量降低。", e: "情绪外显：调低、下降", shape: "shape-circle" }
+            401: { t: "1. 开机 (Power On)", d: "从闭眼休眠状态瞬间睁开，瞳孔缩放，左右自检扫视。", shape: "shape-circle" },
+            402: { t: "2. 关机 (Power Off)", d: "眼皮缓缓合上，瞳孔失去焦点下沉，进入休眠。", shape: "shape-circle" },
+            403: { t: "3. 暂停 (Pause)", d: "从播放状态突然急刹车，眼球迅速居中，然后开始胡乱高频抖动。", shape: "shape-circle" },
+            404: { t: "4. 播放 (Play)", d: "眼神清亮，随着音乐节拍有节奏地上下律动。", shape: "shape-circle" },
+            405: { t: "5. 蓝牙搜索 (BT Search)", d: "蓝牙图标在两眼之间穿梭游走，瞳孔像雷达一样紧紧跟随目标。", shape: "shape-circle" },
+            406: { t: "6. 蓝牙成功 (BT Success)", d: "蓝牙连接成功，脉冲确认后爆发成打勾图标。", shape: "shape-circle" },
+            407: { t: "7. 蓝牙断开 (BT Disconnect)", d: "蓝牙连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", shape: "shape-circle" },
+            408: { t: "8. WiFi搜索 (WiFi Search)", d: "WiFi图标在两眼之间穿梭游走，瞳孔紧紧跟随目标。", shape: "shape-circle" },
+            409: { t: "9. WiFi成功 (WiFi Success)", d: "WiFi连接成功，脉冲确认后爆发成打勾图标。", shape: "shape-circle" },
+            410: { t: "10. WiFi断开 (WiFi Disconnect)", d: "WiFi连接断开。图标闪烁后如落叶般坠落，眼神跟随坠落，随后眼皮无力垂下，左右失落寻觅。", shape: "shape-circle" },
+            411: { t: "11. 音量增加 (Vol Up)", d: "眼珠瞥向左边，然后沿着眼白边缘向上运动，示意音量升高。", shape: "shape-circle" },
+            412: { t: "12. 音量减少 (Vol Down)", d: "眼珠瞥向左边，然后沿着眼白边缘向下运动，示意音量降低。", shape: "shape-circle" },
+            413: { t: "13. 未连接 (Disconnected)", d: "极度缓慢、丝滑、毫无规律的流体感轨迹，打破空气阻力。", shape: "shape-circle" }
         };
 
         let currentMode = 401;
@@ -351,7 +351,6 @@
 
         const titleEl = document.getElementById('mode-title');
         const descEl = document.getElementById('mode-desc');
-        const emotionEl = document.getElementById('mode-emotion');
         const pupilL = document.getElementById('pupil-l');
         const pupilR = document.getElementById('pupil-r');
         const headContainer = document.getElementById('head-container');
@@ -388,7 +387,6 @@
             
             titleEl.innerText = modes[m].t;
             descEl.innerText = modes[m].d;
-            emotionEl.innerText = modes[m].e;
             
             // 切换形变 Class
             pupilL.className = 'pupil ' + modes[m].shape;
@@ -478,7 +476,8 @@
             let targetRotL = 0, targetRotR = 0;
 
             let localTime = time - modeStartTime;
-            let loopDur = (currentMode === 1 || currentMode === 2) ? 6000 : 4000; // 星星眼和眼泪汪汪延长动画周期到 6 秒
+            let loopDur = 4000;
+            if (currentMode === 413) loopDur = 8000;
             let t = localTime % loopDur;
             let currentLoopCount = Math.floor(localTime / loopDur);
             
@@ -957,6 +956,28 @@
                     pR.tx = currentR * Math.cos(currentAngle);
                     pR.ty = currentR * Math.sin(currentAngle);
                     
+                    noiseAmp = 0;
+                    break;
+
+                case 413: // 未连接 (Disconnected) - Draft
+                    let t13 = localTime % 8000;
+                    currentLidTop = -100;
+                    currentLidBottom = 100;
+                    scaleL = scaleR = 1;
+                    
+                    if (t13 < 200 || t13 > 7800) {
+                        pL.tx = 0; pL.ty = 0; pR.tx = 0; pR.ty = 0;
+                        speedL = speedR = 0.2;
+                    } else {
+                        // 利用多个不同频率的正弦波叠加，模拟无规律的流体感
+                        let flowX = Math.sin(time / 1000) * 15 + Math.cos(time / 600) * 10;
+                        let flowY = Math.cos(time / 1200) * 15 + Math.sin(time / 700) * 10;
+                        
+                        pL.tx = flowX; pR.tx = flowX;
+                        pL.ty = flowY; pR.ty = flowY;
+                        
+                        speedL = speedR = 0.02; // 极度缓慢，打破空气阻力
+                    }
                     noiseAmp = 0;
                     break;
             }
